@@ -14,9 +14,16 @@ interface TransactionDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(entity: TransactionEntity)
 
+    /** 导入时按 ID 写入或更新，不影响文件中未涉及的流水。 */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(entities: List<TransactionEntity>)
+
     /** 真正删除指定 ID 的记录，并返回受影响行数。 */
     @Query("DELETE FROM transactions WHERE id = :id")
     suspend fun deleteById(id: String): Int
+
+    @Query("DELETE FROM transactions")
+    suspend fun deleteAll()
 
     @Query("SELECT * FROM transactions WHERE id = :id LIMIT 1")
     suspend fun getById(id: String): TransactionEntity?

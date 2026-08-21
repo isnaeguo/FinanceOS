@@ -1,5 +1,8 @@
 package com.financeos.app.ui.screens
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +32,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -46,8 +51,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.financeos.app.ui.components.EmptyState
+import com.financeos.app.ui.components.LoadingState
 import com.financeos.app.ui.components.categoryIcon
 import com.financeos.app.ui.viewmodel.BudgetEditorUiState
+import com.financeos.app.ui.viewmodel.BudgetEvent
 import com.financeos.app.ui.viewmodel.BudgetUiState
 import com.financeos.app.ui.viewmodel.BudgetUsageUiState
 import com.financeos.app.ui.viewmodel.BudgetViewModel
@@ -57,17 +64,31 @@ import com.financeos.app.ui.viewmodel.CategoryBudgetUiState
 @Composable
 internal fun BudgetRoute(viewModel: BudgetViewModel) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    BudgetScreen(
-        uiState = uiState,
-        onRetry = viewModel::refresh,
-        onEditTotal = viewModel::openTotalBudgetEditor,
-        onAddCategory = viewModel::openNewCategoryBudgetEditor,
-        onEditCategory = viewModel::openCategoryBudgetEditor,
-        onEditorCategorySelected = viewModel::onEditorCategorySelected,
-        onEditorAmountChanged = viewModel::onEditorAmountChanged,
-        onEditorSave = viewModel::saveEditor,
-        onEditorDismiss = viewModel::dismissEditor,
-    )
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(viewModel) {
+        viewModel.events.collect { event ->
+            when (event) {
+                is BudgetEvent.ShowMessage -> snackbarHostState.showSnackbar(event.message)
+            }
+        }
+    }
+    Box(modifier = Modifier.fillMaxSize()) {
+        BudgetScreen(
+            uiState = uiState,
+            onRetry = viewModel::refresh,
+            onEditTotal = viewModel::openTotalBudgetEditor,
+            onAddCategory = viewModel::openNewCategoryBudgetEditor,
+            onEditCategory = viewModel::openCategoryBudgetEditor,
+            onEditorCategorySelected = viewModel::onEditorCategorySelected,
+            onEditorAmountChanged = viewModel::onEditorAmountChanged,
+            onEditorSave = viewModel::saveEditor,
+            onEditorDismiss = viewModel::dismissEditor,
+        )
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+    }
 }
 
 /** 当前月总预算和分类预算页面，指标只展示 ViewModel 已准备好的 UseCase 结果。 */
@@ -89,7 +110,7 @@ internal fun BudgetScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) {
-                CircularProgressIndicator()
+                LoadingState(label = "正在读取预算")
             }
         }
 
@@ -111,9 +132,9 @@ internal fun BudgetScreen(
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
-                    start = 20.dp,
+                    start = 16.dp,
                     top = 16.dp,
-                    end = 20.dp,
+                    end = 16.dp,
                     bottom = 104.dp,
                 ),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -193,6 +214,11 @@ internal fun BudgetScreen(
                         CategoryBudgetCard(
                             budget = categoryBudget,
                             onEdit = { onEditCategory(categoryBudget.categoryId) },
+                            modifier = Modifier.animateItem(
+                                fadeInSpec = tween(160),
+                                placementSpec = tween(180, easing = FastOutSlowInEasing),
+                                fadeOutSpec = tween(120),
+                            ),
                         )
                     }
                 }
@@ -237,8 +263,9 @@ private fun MissingTotalBudgetCard(
 private fun CategoryBudgetCard(
     budget: CategoryBudgetUiState,
     onEdit: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(modifier = modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -331,8 +358,13 @@ private fun BudgetUsageContent(usage: BudgetUsageUiState) {
             )
         }
     }
+    val animatedProgress by animateFloatAsState(
+        targetValue = usage.progress,
+        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+        label = "budgetProgress",
+    )
     LinearProgressIndicator(
-        progress = { usage.progress },
+        progress = { animatedProgress },
         modifier = Modifier.fillMaxWidth(),
         color = if (usage.isOverBudget) {
             MaterialTheme.colorScheme.error
@@ -386,7 +418,7 @@ private fun BudgetMetricText(label: String, value: String) {
     )
     Text(
         text = value,
-        style = MaterialTheme.typography.titleSmall,
+        style = MaterialTheme.typography.titleSmall.copy(fontFeatureSettings = "tnum"),
         maxLines = 1,
     )
 }

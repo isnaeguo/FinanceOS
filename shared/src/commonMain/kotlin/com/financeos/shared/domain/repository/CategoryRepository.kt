@@ -1,6 +1,7 @@
 package com.financeos.shared.domain.repository
 
 import com.financeos.shared.domain.model.Category
+import kotlinx.coroutines.flow.Flow
 
 /** 定义分类读取所需的最小业务能力。 */
 interface CategoryRepository {
@@ -9,4 +10,7 @@ interface CategoryRepository {
 
     /** 获取全部分类。 */
     suspend fun getAll(): List<Category>
+
+    /** 持续观察全部分类，使导入或恢复后现有页面自动更新名称和图标。 */
+    fun observeAll(): Flow<List<Category>>
 }

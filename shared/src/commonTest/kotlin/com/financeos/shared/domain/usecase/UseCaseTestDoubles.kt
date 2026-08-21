@@ -34,29 +34,42 @@ internal class FakeTransactionRepository(
 
     override suspend fun getAll(): List<Transaction> = transactions.toList()
 
-    override suspend fun getByMonth(
+    override suspend fun getByPeriod(
         startInclusive: Instant,
         endExclusive: Instant,
     ): List<Transaction> = transactions.filter {
         it.dateTime >= startInclusive && it.dateTime < endExclusive
     }
 
-    override fun observeByMonth(
+    override fun observeByPeriod(
         startInclusive: Instant,
         endExclusive: Instant,
     ): Flow<List<Transaction>> = transactionUpdates.map { current ->
         current.filter { it.dateTime >= startInclusive && it.dateTime < endExclusive }
     }
+
+    override suspend fun getByMonth(
+        startInclusive: Instant,
+        endExclusive: Instant,
+    ): List<Transaction> = getByPeriod(startInclusive, endExclusive)
+
+    override fun observeByMonth(
+        startInclusive: Instant,
+        endExclusive: Instant,
+    ): Flow<List<Transaction>> = observeByPeriod(startInclusive, endExclusive)
 }
 
 internal class FakeCategoryRepository(
     categories: List<Category>,
 ) : CategoryRepository {
     private val categoriesById = categories.associateBy(Category::id)
+    private val categoryUpdates = MutableStateFlow(categoriesById.values.toList())
 
     override suspend fun get(id: String): Category? = categoriesById[id]
 
     override suspend fun getAll(): List<Category> = categoriesById.values.toList()
+
+    override fun observeAll(): Flow<List<Category>> = categoryUpdates
 }
 
 internal class FakeBudgetRepository(

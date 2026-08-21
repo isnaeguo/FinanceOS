@@ -1,7 +1,9 @@
 package com.financeos.shared.domain.usecase
 
 import com.financeos.shared.domain.model.BudgetMonth
+import com.financeos.shared.domain.model.Budget
 import com.financeos.shared.domain.model.MonthPeriod
+import com.financeos.shared.domain.model.Transaction
 import com.financeos.shared.domain.model.TransactionType
 import com.financeos.shared.domain.repository.BudgetRepository
 import kotlin.time.Instant
@@ -34,7 +36,32 @@ class CalculateDailyAvailableBudgetUseCase(
         }
 
         val totalBudget = budgetRepository.get(period.month, categoryId = null) ?: return null
-        val amountUsedBeforeToday = getMonthlyTransactions(period)
+        return calculate(
+            period = period,
+            currentDayOfMonth = currentDayOfMonth,
+            startOfToday = startOfToday,
+            totalBudget = totalBudget,
+            transactions = getMonthlyTransactions(period),
+        )
+    }
+
+    /** 使用页面已观察到的同一份预算和流水快照，保证结果一致且不重复查询。 */
+    fun calculate(
+        period: MonthPeriod,
+        currentDayOfMonth: Int,
+        startOfToday: Instant,
+        totalBudget: Budget?,
+        transactions: List<Transaction>,
+    ): DailyAvailableBudget? {
+        val daysInMonth = period.month.daysInMonth()
+        require(currentDayOfMonth in 1..daysInMonth) {
+            "Current day must be valid for the budget month."
+        }
+        require(startOfToday >= period.startInclusive && startOfToday < period.endExclusive) {
+            "Start of today must be inside the budget month."
+        }
+        totalBudget ?: return null
+        val amountUsedBeforeToday = transactions
             .asSequence()
             .filter { transaction ->
                 transaction.type == TransactionType.EXPENSE &&

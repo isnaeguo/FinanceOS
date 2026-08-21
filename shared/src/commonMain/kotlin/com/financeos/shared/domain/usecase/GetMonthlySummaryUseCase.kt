@@ -1,6 +1,7 @@
 package com.financeos.shared.domain.usecase
 
 import com.financeos.shared.domain.model.MonthPeriod
+import com.financeos.shared.domain.model.Transaction
 import com.financeos.shared.domain.model.TransactionType
 
 /** 指定月份的收支汇总，所有金额均为最小货币单位。 */
@@ -16,11 +17,16 @@ class GetMonthlySummaryUseCase(
     private val getMonthlyTransactions: GetMonthlyTransactionsUseCase,
 ) {
     suspend operator fun invoke(period: MonthPeriod): MonthlySummary {
+        return calculate(getMonthlyTransactions(period))
+    }
+
+    /** 使用调用方已经取得的同月快照计算，避免响应式页面再次访问数据库。 */
+    fun calculate(transactions: List<Transaction>): MonthlySummary {
         var totalIncome = 0L
         var totalExpense = 0L
         val expensesByCategory = linkedMapOf<String, Long>()
 
-        getMonthlyTransactions(period).forEach { transaction ->
+        transactions.forEach { transaction ->
             when (transaction.type) {
                 TransactionType.INCOME -> {
                     totalIncome = addMoney(totalIncome, transaction.amount)

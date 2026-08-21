@@ -44,6 +44,15 @@ internal fun CategoryEntity.toDomain() = Category(
     isSystem = isSystem,
 )
 
+internal fun Category.toEntity() = CategoryEntity(
+    id = id,
+    name = name,
+    type = type.name,
+    // iconKey 是跨平台语义键，数据库不保存 Android Drawable ID。
+    iconKey = iconKey,
+    isSystem = isSystem,
+)
+
 internal fun Budget.toEntity() = BudgetEntity(
     id = id,
     year = month.year,

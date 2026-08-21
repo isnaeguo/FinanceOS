@@ -19,12 +19,17 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
 
 /** UseCase 预算结果对应的 Android 展示状态。 */
 data class BudgetUsageUiState(
@@ -82,6 +87,11 @@ data class BudgetUiState(
     val errorMessage: String? = null,
 )
 
+/** 预算页只执行一次的轻量操作反馈。 */
+sealed interface BudgetEvent {
+    data class ShowMessage(val message: String) : BudgetEvent
+}
+
 /** 管理当前月预算结果和编辑状态，所有预算指标均来自 [GetBudgetStatusUseCase]。 */
 class BudgetViewModel(
     private val getBudgetStatus: GetBudgetStatusUseCase,
@@ -97,6 +107,8 @@ class BudgetViewModel(
         BudgetUiState(monthLabel = monthFormatter.format(selectedMonth)),
     )
     val uiState: StateFlow<BudgetUiState> = _uiState.asStateFlow()
+    private val _events = Channel<BudgetEvent>(capacity = Channel.BUFFERED)
+    val events: Flow<BudgetEvent> = _events.receiveAsFlow()
 
     private var expenseCategories: List<Category> = emptyList()
     private var observationJob: Job? = null
@@ -105,21 +117,50 @@ class BudgetViewModel(
         refresh()
     }
 
-    /** 流水变化时重新调用预算 UseCase，使已使用和剩余金额始终来自最新数据库状态。 */
+    /** 观察同月流水和预算，并直接复用同一批快照完成计算。 */
     fun refresh() {
         observationJob?.cancel()
         observationJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             try {
-                expenseCategories = categoryRepository.getAll().filter {
-                    it.type == CategoryType.EXPENSE || it.type == CategoryType.COMMON
-                }
                 combine(
                     getMonthlyTransactions.observe(period),
                     budgetRepository.observeByMonth(period.month),
-                ) { _, _ -> Unit }.collect {
-                    loadBudgetStatus()
+                    categoryRepository.observeAll(),
+                ) { transactions, budgets, categories ->
+                    val filteredCategories = categories.filter {
+                        it.type == CategoryType.EXPENSE || it.type == CategoryType.COMMON
+                    }
+                    val status = getBudgetStatus.calculate(transactions, budgets)
+                    BudgetSnapshot(
+                        expenseCategories = filteredCategories,
+                        total = status.total.toUiState(),
+                        categoryBudgets = filteredCategories.mapNotNull { category ->
+                            val usage = status.categories[category.id] ?: return@mapNotNull null
+                            CategoryBudgetUiState(
+                                categoryId = category.id,
+                                categoryName = category.name,
+                                categoryIconKey = category.iconKey,
+                                usage = usage.toUiState(),
+                            )
+                        },
+                    )
                 }
+                    // 月流水汇总和展示格式化不占用主线程，避免预算进度更新时影响绘制。
+                    .flowOn(Dispatchers.Default)
+                    .collect { snapshot ->
+                        expenseCategories = snapshot.expenseCategories
+                        _uiState.update { current ->
+                            current.copy(
+                                isLoading = false,
+                                total = snapshot.total,
+                                categoryBudgets = snapshot.categoryBudgets,
+                                canAddCategoryBudget =
+                                    snapshot.categoryBudgets.size < snapshot.expenseCategories.size,
+                                errorMessage = null,
+                            )
+                        }
+                    }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -250,6 +291,7 @@ class BudgetViewModel(
                     ),
                 )
                 _uiState.update { it.copy(editor = null) }
+                _events.send(BudgetEvent.ShowMessage("预算已更新"))
                 // Room 的预算 Flow 会触发统一刷新，避免保存路径手动拼装页面结果。
             } catch (error: CancellationException) {
                 throw error
@@ -258,28 +300,6 @@ class BudgetViewModel(
                     it.copy(isSaving = false, saveError = "预算保存失败，请稍后重试")
                 }
             }
-        }
-    }
-
-    private suspend fun loadBudgetStatus() {
-        val status = getBudgetStatus(period)
-        val categoryBudgets = expenseCategories.mapNotNull { category ->
-            val usage = status.categories[category.id] ?: return@mapNotNull null
-            CategoryBudgetUiState(
-                categoryId = category.id,
-                categoryName = category.name,
-                categoryIconKey = category.iconKey,
-                usage = usage.toUiState(),
-            )
-        }
-        _uiState.update { current ->
-            current.copy(
-                isLoading = false,
-                total = status.total.toUiState(),
-                categoryBudgets = categoryBudgets,
-                canAddCategoryBudget = categoryBudgets.size < expenseCategories.size,
-                errorMessage = null,
-            )
         }
     }
 
@@ -331,3 +351,9 @@ class BudgetViewModel(
         )
     }
 }
+
+private data class BudgetSnapshot(
+    val expenseCategories: List<Category>,
+    val total: BudgetUsageUiState,
+    val categoryBudgets: List<CategoryBudgetUiState>,
+)

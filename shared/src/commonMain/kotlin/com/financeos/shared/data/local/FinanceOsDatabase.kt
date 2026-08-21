@@ -11,7 +11,7 @@ import com.financeos.shared.data.local.entity.BudgetEntity
 import com.financeos.shared.data.local.entity.CategoryEntity
 import com.financeos.shared.data.local.entity.TransactionEntity
 
-/** FinanceOS v0.1 的 Room KMP 数据库入口。 */
+/** FinanceOS 的 Room KMP 数据库入口。 */
 @Database(
     entities = [
         TransactionEntity::class,

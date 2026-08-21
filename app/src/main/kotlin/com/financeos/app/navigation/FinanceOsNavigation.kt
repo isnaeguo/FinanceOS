@@ -2,7 +2,10 @@ package com.financeos.app.navigation
 
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -23,10 +26,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -41,22 +48,24 @@ import com.financeos.app.FinanceOsApplication
 import com.financeos.app.ui.screens.AddTransactionRoute
 import com.financeos.app.ui.screens.BudgetRoute
 import com.financeos.app.ui.screens.HomeRoute
-import com.financeos.app.ui.screens.SettingsScreen
+import com.financeos.app.ui.screens.SettingsRoute
 import com.financeos.app.ui.screens.TransactionsRoute
 import com.financeos.app.ui.viewmodel.AddTransactionViewModel
 import com.financeos.app.ui.viewmodel.BudgetViewModel
 import com.financeos.app.ui.viewmodel.DashboardViewModel
+import com.financeos.app.ui.viewmodel.DataTransferViewModel
 import com.financeos.app.ui.viewmodel.TransactionsViewModel
+import kotlinx.coroutines.launch
 
 private const val HOME_ROUTE = "home"
 private const val TRANSACTIONS_ROUTE = "transactions"
 private const val ADD_TRANSACTION_ROUTE = "add-transaction"
 private const val BUDGET_ROUTE = "budget"
 private const val SETTINGS_ROUTE = "settings"
-private const val TOP_LEVEL_FADE_DURATION_MILLIS = 90
-private const val SCREEN_ENTER_DURATION_MILLIS = 140
-private const val SCREEN_EXIT_DURATION_MILLIS = 70
-private const val COMPACT_FAB_FONT_SCALE = 1.5f
+private const val TOP_LEVEL_FADE_DURATION_MILLIS = 140
+private const val SCREEN_ENTER_DURATION_MILLIS = 180
+private const val SCREEN_EXIT_DURATION_MILLIS = 120
+private const val COMPACT_FAB_FONT_SCALE = 1.3f
 
 private data class TopLevelDestination(
     val route: String,
@@ -75,10 +84,9 @@ private val topLevelDestinations = listOf(
 @Composable
 fun FinanceOsNavigation() {
     val navController = rememberNavController()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
     val application = LocalContext.current.applicationContext as FinanceOsApplication
-    val transactionsViewModel: TransactionsViewModel = viewModel(
-        factory = application.container.transactionsViewModelFactory,
-    )
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
     val currentRoute = currentDestination?.route ?: HOME_ROUTE
@@ -144,26 +152,23 @@ fun FinanceOsNavigation() {
                 }
             }
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
-            if (showAddTransactionFab) {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = showAddTransactionFab,
+                enter = fadeIn(tween(160)) + scaleIn(tween(160), initialScale = 0.9f),
+                exit = fadeOut(tween(100)) + scaleOut(tween(100), targetScale = 0.9f),
+            ) {
                 if (useCompactFab) {
                     FloatingActionButton(
                         onClick = { navController.navigate(ADD_TRANSACTION_ROUTE) },
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "记一笔",
-                        )
+                        Icon(imageVector = Icons.Default.Add, contentDescription = "记一笔")
                     }
                 } else {
                     ExtendedFloatingActionButton(
                         onClick = { navController.navigate(ADD_TRANSACTION_ROUTE) },
-                        icon = {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = null,
-                            )
-                        },
+                        icon = { Icon(imageVector = Icons.Default.Add, contentDescription = null) },
                         text = { Text("记一笔") },
                     )
                 }
@@ -198,12 +203,21 @@ fun FinanceOsNavigation() {
                     }
                 },
                 exitTransition = {
-                    fadeOut(
-                        tween(
-                            durationMillis = SCREEN_EXIT_DURATION_MILLIS,
-                            easing = FastOutLinearInEasing,
-                        ),
-                    )
+                    val isTopLevel = initialState.destination.route.isTopLevelRoute() &&
+                        targetState.destination.route.isTopLevelRoute()
+                    if (isTopLevel) {
+                        fadeOut(tween(TOP_LEVEL_FADE_DURATION_MILLIS))
+                    } else {
+                        fadeOut(
+                            tween(
+                                durationMillis = SCREEN_EXIT_DURATION_MILLIS,
+                                easing = FastOutLinearInEasing,
+                            ),
+                        ) + slideOutHorizontally(
+                            animationSpec = tween(SCREEN_EXIT_DURATION_MILLIS),
+                            targetOffsetX = { fullWidth -> -fullWidth / 24 },
+                        )
+                    }
                 },
                 popEnterTransition = {
                     fadeIn(
@@ -225,6 +239,9 @@ fun FinanceOsNavigation() {
                             durationMillis = SCREEN_EXIT_DURATION_MILLIS,
                             easing = FastOutLinearInEasing,
                         ),
+                    ) + slideOutHorizontally(
+                        animationSpec = tween(SCREEN_EXIT_DURATION_MILLIS),
+                        targetOffsetX = { fullWidth -> fullWidth / 24 },
                     )
                 },
             ) {
@@ -239,6 +256,9 @@ fun FinanceOsNavigation() {
                     )
                 }
                 composable(TRANSACTIONS_ROUTE) {
+                    val transactionsViewModel: TransactionsViewModel = viewModel(
+                        factory = application.container.transactionsViewModelFactory,
+                    )
                     TransactionsRoute(
                         viewModel = transactionsViewModel,
                         onAddTransaction = { navController.navigate(ADD_TRANSACTION_ROUTE) },
@@ -250,7 +270,12 @@ fun FinanceOsNavigation() {
                     )
                     AddTransactionRoute(
                         viewModel = addTransactionViewModel,
-                        onSaved = { navController.popBackStack() },
+                        onSaved = {
+                            navController.popBackStack()
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar("流水已保存")
+                            }
+                        },
                     )
                 }
                 composable(BUDGET_ROUTE) {
@@ -260,7 +285,10 @@ fun FinanceOsNavigation() {
                     BudgetRoute(viewModel = budgetViewModel)
                 }
                 composable(SETTINGS_ROUTE) {
-                    SettingsScreen()
+                    val dataTransferViewModel: DataTransferViewModel = viewModel(
+                        factory = application.container.dataTransferViewModelFactory,
+                    )
+                    SettingsRoute(viewModel = dataTransferViewModel)
                 }
             }
         },

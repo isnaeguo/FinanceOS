@@ -8,7 +8,9 @@ import com.financeos.shared.domain.model.Budget
 import com.financeos.shared.domain.model.BudgetMonth
 import com.financeos.shared.domain.repository.BudgetRepository
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.Dispatchers
 
 /** 使用 Room DAO 实现月总预算和分类月预算存取。 */
 class LocalBudgetRepository(
@@ -35,6 +37,7 @@ class LocalBudgetRepository(
     override fun observeByMonth(month: BudgetMonth): Flow<List<Budget>> = dao
         .observeByMonth(year = month.year, month = month.month)
         .map { entities -> entities.map { it.toDomain() } }
+        .flowOn(Dispatchers.Default)
 
     override suspend fun save(budget: Budget) {
         dao.save(budget.toEntity())

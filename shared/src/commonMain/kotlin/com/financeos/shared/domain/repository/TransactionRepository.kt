@@ -18,6 +18,22 @@ interface TransactionRepository {
     /** 获取全部流水。 */
     suspend fun getAll(): List<Transaction>
 
+    /** 获取任意半开时间区间内的流水，供趋势等跨月业务使用。 */
+    suspend fun getByPeriod(
+        startInclusive: Instant,
+        endExclusive: Instant,
+    ): List<Transaction>
+
+    /**
+     * 持续观察任意半开时间区间，供跨月趋势在流水变化后自动更新。
+     *
+     * Repository 仍只暴露 Domain Model，调用方不需要知道 Room 的失效追踪机制。
+     */
+    fun observeByPeriod(
+        startInclusive: Instant,
+        endExclusive: Instant,
+    ): Flow<List<Transaction>>
+
     /**
      * 获取指定本地月份对应的流水。
      *

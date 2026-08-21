@@ -3,10 +3,12 @@ package com.financeos.shared.data.local
 import androidx.room3.Room
 import com.financeos.shared.data.local.repository.LocalBudgetRepository
 import com.financeos.shared.data.local.repository.LocalCategoryRepository
+import com.financeos.shared.data.local.repository.LocalFinanceDataRepository
 import com.financeos.shared.data.local.repository.LocalTransactionRepository
 import com.financeos.shared.domain.model.Budget
 import com.financeos.shared.domain.model.BudgetMonth
 import com.financeos.shared.domain.model.DefaultCategories
+import com.financeos.shared.domain.model.FinanceDataSnapshot
 import com.financeos.shared.domain.model.Transaction
 import com.financeos.shared.domain.model.TransactionType
 import com.financeos.shared.domain.usecase.AddTransactionCommand
@@ -224,6 +226,77 @@ class LocalRepositoryTest {
                 listOf(emptyList(), listOf(original), listOf(updated)),
                 emissions,
             )
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun mergeAndReplaceUseCompleteDomainSnapshots() = runTest {
+        val database = openMemoryDatabase()
+        try {
+            val dataRepository = LocalFinanceDataRepository(database)
+            val transactionRepository = LocalTransactionRepository(database.transactionDao())
+            val original = expense(
+                id = "transaction-original",
+                amount = 1_000L,
+                dateTime = Instant.parse("2026-08-01T02:00:00Z"),
+            )
+            transactionRepository.add(original)
+            val imported = expense(
+                id = "transaction-imported",
+                amount = 2_350L,
+                dateTime = Instant.parse("2026-08-10T08:30:00Z"),
+                note = "午饭",
+            )
+
+            dataRepository.merge(
+                FinanceDataSnapshot(
+                    transactions = listOf(imported),
+                    categories = emptyList(),
+                    budgets = emptyList(),
+                ),
+            )
+            assertEquals(setOf(original, imported), dataRepository.snapshot().transactions.toSet())
+
+            val replacement = FinanceDataSnapshot(
+                transactions = listOf(imported.copy(note = "恢复后的午饭")),
+                categories = DefaultCategories.all,
+                budgets = emptyList(),
+            )
+            dataRepository.replaceAll(replacement)
+
+            assertEquals(
+                replacement.copy(categories = replacement.categories.sortedBy { it.id }),
+                dataRepository.snapshot(),
+            )
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun invalidRestoreDoesNotClearExistingData() = runTest {
+        val database = openMemoryDatabase()
+        try {
+            val dataRepository = LocalFinanceDataRepository(database)
+            val transactionRepository = LocalTransactionRepository(database.transactionDao())
+            val existing = expense(
+                id = "transaction-safe",
+                dateTime = Instant.parse("2026-08-10T08:30:00Z"),
+            )
+            transactionRepository.add(existing)
+
+            val invalidSnapshot = FinanceDataSnapshot(
+                transactions = listOf(existing.copy(categoryId = "missing-category")),
+                categories = DefaultCategories.all,
+                budgets = emptyList(),
+            )
+            kotlin.test.assertFailsWith<IllegalArgumentException> {
+                dataRepository.replaceAll(invalidSnapshot)
+            }
+
+            assertEquals(existing, transactionRepository.get(existing.id))
         } finally {
             database.close()
         }

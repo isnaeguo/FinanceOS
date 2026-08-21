@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -101,11 +102,13 @@ internal fun AddTransactionScreen(
 ) {
     val amountFocusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         amountFocusRequester.requestFocus()
+        keyboardController?.show()
     }
 
     Column(
@@ -115,7 +118,7 @@ internal fun AddTransactionScreen(
     ) {
         LazyColumn(
             modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item {
@@ -136,6 +139,7 @@ internal fun AddTransactionScreen(
                     keyboardActions = androidx.compose.foundation.text.KeyboardActions(
                         onDone = {
                             focusManager.clearFocus()
+                            keyboardController?.hide()
                             if (uiState.canSave) onSave()
                         },
                     ),
@@ -254,12 +258,13 @@ internal fun AddTransactionScreen(
             Button(
                 onClick = {
                     focusManager.clearFocus()
+                    keyboardController?.hide()
                     onSave()
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .navigationBarsPadding()
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
                 enabled = uiState.canSave,
             ) {
                 if (uiState.isSaving) {

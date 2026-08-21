@@ -8,15 +8,20 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.financeos.app.ui.viewmodel.AddTransactionViewModel
 import com.financeos.app.ui.viewmodel.BudgetViewModel
 import com.financeos.app.ui.viewmodel.DashboardViewModel
+import com.financeos.app.ui.viewmodel.DataTransferViewModel
 import com.financeos.app.ui.viewmodel.TransactionsViewModel
+import com.financeos.app.data.AndroidDocumentStore
 import com.financeos.shared.data.local.createFinanceOsDatabase
 import com.financeos.shared.data.local.repository.LocalBudgetRepository
 import com.financeos.shared.data.local.repository.LocalCategoryRepository
+import com.financeos.shared.data.local.repository.LocalFinanceDataRepository
 import com.financeos.shared.data.local.repository.LocalTransactionRepository
+import com.financeos.shared.data.transfer.FinanceDataTransferService
 import com.financeos.shared.domain.usecase.AddTransactionUseCase
 import com.financeos.shared.domain.usecase.CalculateDailyAvailableBudgetUseCase
 import com.financeos.shared.domain.usecase.CalculateDailyExpenseUseCase
 import com.financeos.shared.domain.usecase.GetBudgetStatusUseCase
+import com.financeos.shared.domain.usecase.GetExpenseTrendUseCase
 import com.financeos.shared.domain.usecase.GetMonthlySummaryUseCase
 import com.financeos.shared.domain.usecase.GetMonthlyTransactionsUseCase
 
@@ -28,7 +33,7 @@ class FinanceOsApplication : Application() {
 }
 
 /**
- * FinanceOS v0.1 的最小依赖容器。
+ * FinanceOS 的最小依赖容器。
  *
  * 当前依赖数量仍然很少，手动组装能让依赖方向清晰，也避免仅为少量对象引入 DI 框架。
  */
@@ -52,6 +57,11 @@ internal class FinanceOsAppContainer(context: Context) {
         getMonthlyTransactions = getMonthlyTransactionsUseCase,
     )
     private val calculateDailyExpenseUseCase = CalculateDailyExpenseUseCase()
+    private val getExpenseTrendUseCase = GetExpenseTrendUseCase(transactionRepository)
+    private val financeDataTransferService = FinanceDataTransferService(
+        repository = LocalFinanceDataRepository(database),
+    )
+    private val documentStore = AndroidDocumentStore(context)
 
     val addTransactionViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
         initializer {
@@ -91,8 +101,18 @@ internal class FinanceOsAppContainer(context: Context) {
                 calculateDailyAvailableBudget = calculateDailyAvailableBudgetUseCase,
                 calculateDailyExpense = calculateDailyExpenseUseCase,
                 getMonthlyTransactions = getMonthlyTransactionsUseCase,
+                getExpenseTrend = getExpenseTrendUseCase,
                 budgetRepository = budgetRepository,
                 categoryRepository = categoryRepository,
+            )
+        }
+    }
+
+    val dataTransferViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
+        initializer {
+            DataTransferViewModel(
+                service = financeDataTransferService,
+                documentStore = documentStore,
             )
         }
     }
