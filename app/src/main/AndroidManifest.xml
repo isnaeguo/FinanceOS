@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
+        android:name=".FinanceOsApplication"
+        android:icon="@drawable/ic_launcher"
         android:label="FinanceOS"
+        android:roundIcon="@drawable/ic_launcher"
         android:theme="@style/AppTheme">
         <activity
             android:name=".MainActivity"
@@ -13,4 +16,3 @@
         </activity>
     </application>
 </manifest>
-

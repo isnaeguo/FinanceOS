@@ -9,6 +9,8 @@ import com.financeos.shared.domain.model.BudgetMonth
 import com.financeos.shared.domain.model.DefaultCategories
 import com.financeos.shared.domain.model.Transaction
 import com.financeos.shared.domain.model.TransactionType
+import com.financeos.shared.domain.usecase.AddTransactionCommand
+import com.financeos.shared.domain.usecase.AddTransactionUseCase
 import java.nio.file.Files
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -20,12 +22,14 @@ import kotlin.time.Instant
 
 class LocalRepositoryTest {
     @Test
-    fun dataPersistsAndDefaultCategoriesAreNotDuplicatedAfterReopen() = runTest {
+    fun addTransactionUseCasePersistsLunchExpenseAfterDatabaseReopen() = runTest {
         val directory = Files.createTempDirectory("financeos-room-test").toFile()
         val databaseFile = directory.resolve("financeos.db")
         val transaction = expense(
             id = "transaction-persisted",
+            amount = 2_350L,
             dateTime = Instant.parse("2026-08-10T08:30:00Z"),
+            note = "午饭",
         )
         val originalBudget = Budget(
             id = "budget-2026-08",
@@ -37,7 +41,19 @@ class LocalRepositoryTest {
         try {
             val firstDatabase = openFileDatabase(databaseFile.absolutePath)
             try {
-                LocalTransactionRepository(firstDatabase.transactionDao()).add(transaction)
+                val transactionRepository = LocalTransactionRepository(firstDatabase.transactionDao())
+                val categoryRepository = LocalCategoryRepository(firstDatabase.categoryDao())
+                AddTransactionUseCase(transactionRepository, categoryRepository)(
+                    AddTransactionCommand(
+                        id = transaction.id,
+                        amount = transaction.amount,
+                        type = transaction.type,
+                        categoryId = transaction.categoryId,
+                        accountId = transaction.accountId,
+                        dateTime = transaction.dateTime,
+                        note = transaction.note,
+                    ),
+                )
                 val budgetRepository = LocalBudgetRepository(firstDatabase.budgetDao())
                 budgetRepository.save(originalBudget)
                 budgetRepository.save(updatedBudget)
@@ -119,14 +135,16 @@ class LocalRepositoryTest {
 
     private fun expense(
         id: String,
+        amount: Long = 1_299L,
         dateTime: Instant,
+        note: String = "数据库测试",
     ): Transaction = Transaction(
         id = id,
-        amount = 1_299L,
+        amount = amount,
         type = TransactionType.EXPENSE,
         categoryId = "system-food",
         accountId = null,
         dateTime = dateTime,
-        note = "数据库测试",
+        note = note,
     )
 }
