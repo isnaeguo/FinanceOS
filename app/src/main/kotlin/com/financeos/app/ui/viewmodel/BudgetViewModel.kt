@@ -76,9 +76,16 @@ data class BudgetEditorUiState(
             !isSaving
 }
 
-/** 当前月预算页面状态。 */
+/** 预算页只允许在当前月和紧邻的下个月之间切换。 */
+enum class BudgetMonthSelection(val label: String) {
+    CURRENT("本月"),
+    NEXT("下月"),
+}
+
+/** 当前选定月份的预算页面状态。 */
 data class BudgetUiState(
     val monthLabel: String,
+    val monthSelection: BudgetMonthSelection = BudgetMonthSelection.CURRENT,
     val isLoading: Boolean = true,
     val total: BudgetUsageUiState? = null,
     val categoryBudgets: List<CategoryBudgetUiState> = emptyList(),
@@ -92,7 +99,7 @@ sealed interface BudgetEvent {
     data class ShowMessage(val message: String) : BudgetEvent
 }
 
-/** 管理当前月预算结果和编辑状态，所有预算指标均来自 [GetBudgetStatusUseCase]。 */
+/** 管理本月或下月预算结果和编辑状态，所有预算指标均来自 [GetBudgetStatusUseCase]。 */
 class BudgetViewModel(
     private val getBudgetStatus: GetBudgetStatusUseCase,
     private val getMonthlyTransactions: GetMonthlyTransactionsUseCase,
@@ -101,8 +108,9 @@ class BudgetViewModel(
     private val zoneId: ZoneId = ZoneId.systemDefault(),
     currentMonth: YearMonth? = null,
 ) : ViewModel() {
-    private val selectedMonth = currentMonth ?: YearMonth.now(zoneId)
-    private val period = selectedMonth.toMonthPeriod(zoneId)
+    private val baseMonth = currentMonth ?: YearMonth.now(zoneId)
+    private var monthSelection = BudgetMonthSelection.CURRENT
+    private var selectedMonth = monthSelection.resolve(baseMonth)
     private val _uiState = MutableStateFlow(
         BudgetUiState(monthLabel = monthFormatter.format(selectedMonth)),
     )
@@ -117,8 +125,23 @@ class BudgetViewModel(
         refresh()
     }
 
+    fun selectMonth(selection: BudgetMonthSelection) {
+        if (selection == monthSelection) return
+        monthSelection = selection
+        selectedMonth = selection.resolve(baseMonth)
+        expenseCategories = emptyList()
+        _uiState.update {
+            BudgetUiState(
+                monthLabel = monthFormatter.format(selectedMonth),
+                monthSelection = selection,
+            )
+        }
+        refresh()
+    }
+
     /** 观察同月流水和预算，并直接复用同一批快照完成计算。 */
     fun refresh() {
+        val period = selectedMonth.toMonthPeriod(zoneId)
         observationJob?.cancel()
         observationJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
@@ -176,7 +199,11 @@ class BudgetViewModel(
         _uiState.update {
             it.copy(
                 editor = BudgetEditorUiState(
-                    title = if (total.hasBudget) "修改月总预算" else "设置月总预算",
+                    title = if (total.hasBudget) {
+                        "修改${monthSelection.label}总预算"
+                    } else {
+                        "设置${monthSelection.label}总预算"
+                    },
                     isCategoryBudget = false,
                     isNewCategoryBudget = false,
                     selectedCategoryId = null,
@@ -197,7 +224,7 @@ class BudgetViewModel(
         _uiState.update {
             it.copy(
                 editor = BudgetEditorUiState(
-                    title = "新增分类预算",
+                    title = "新增${monthSelection.label}分类预算",
                     isCategoryBudget = true,
                     isNewCategoryBudget = true,
                     selectedCategoryId = options.first().id,
@@ -215,7 +242,7 @@ class BudgetViewModel(
         _uiState.update {
             it.copy(
                 editor = BudgetEditorUiState(
-                    title = "修改${categoryBudget.categoryName}预算",
+                    title = "修改${monthSelection.label}${categoryBudget.categoryName}预算",
                     isCategoryBudget = true,
                     isNewCategoryBudget = false,
                     selectedCategoryId = categoryId,
@@ -279,19 +306,22 @@ class BudgetViewModel(
         }
 
         updateEditor { it.copy(isSaving = true, amountError = null, saveError = null) }
+        // 保存前固定目标月份，保证异步写入不会因页面状态变化而落到其他月份。
+        val targetMonth = selectedMonth.toMonthPeriod(zoneId).month
+        val targetMonthLabel = monthSelection.label
         viewModelScope.launch {
             try {
-                val existing = budgetRepository.get(period.month, categoryId)
+                val existing = budgetRepository.get(targetMonth, categoryId)
                 budgetRepository.save(
                     Budget(
                         id = existing?.id ?: UUID.randomUUID().toString(),
-                        month = period.month,
+                        month = targetMonth,
                         amountLimit = amountLimit,
                         categoryId = categoryId,
                     ),
                 )
                 _uiState.update { it.copy(editor = null) }
-                _events.send(BudgetEvent.ShowMessage("预算已更新"))
+                _events.send(BudgetEvent.ShowMessage("${targetMonthLabel}预算已更新"))
                 // Room 的预算 Flow 会触发统一刷新，避免保存路径手动拼装页面结果。
             } catch (error: CancellationException) {
                 throw error
@@ -350,6 +380,12 @@ class BudgetViewModel(
             Locale.SIMPLIFIED_CHINESE,
         )
     }
+}
+
+/** 把受限的页面选择映射为唯一允许管理的预算月份。 */
+internal fun BudgetMonthSelection.resolve(baseMonth: YearMonth): YearMonth = when (this) {
+    BudgetMonthSelection.CURRENT -> baseMonth
+    BudgetMonthSelection.NEXT -> baseMonth.plusMonths(1)
 }
 
 private data class BudgetSnapshot(

@@ -115,6 +115,7 @@ internal fun TransactionsScreen(
         Column(modifier = Modifier.fillMaxSize()) {
             MonthSelector(
                 monthLabel = uiState.monthLabel,
+                canShowNextMonth = uiState.canShowNextMonth,
                 onPreviousMonth = onPreviousMonth,
                 onNextMonth = onNextMonth,
             )
@@ -347,6 +348,7 @@ private fun FilterOptionMenu(
 @Composable
 private fun MonthSelector(
     monthLabel: String,
+    canShowNextMonth: Boolean,
     onPreviousMonth: () -> Unit,
     onNextMonth: () -> Unit,
 ) {
@@ -361,7 +363,10 @@ private fun MonthSelector(
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "上个月")
         }
         Text(text = monthLabel, style = MaterialTheme.typography.titleMedium)
-        IconButton(onClick = onNextMonth) {
+        IconButton(
+            onClick = onNextMonth,
+            enabled = canShowNextMonth,
+        ) {
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "下个月")
         }
     }

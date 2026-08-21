@@ -24,6 +24,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -283,6 +284,7 @@ internal fun AddTransactionScreen(
     if (showDatePicker) {
         TransactionDatePickerDialog(
             date = uiState.date,
+            latestAllowedDate = uiState.latestAllowedDate,
             onDateSelected = {
                 onDateChanged(it)
                 showDatePicker = false
@@ -307,14 +309,27 @@ internal fun AddTransactionScreen(
 @Composable
 private fun TransactionDatePickerDialog(
     date: LocalDate,
+    latestAllowedDate: LocalDate,
     onDateSelected: (LocalDate) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val latestAllowedDateMillis = remember(latestAllowedDate) {
+        latestAllowedDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+    }
+    val selectableDates = remember(latestAllowedDate, latestAllowedDateMillis) {
+        object : SelectableDates {
+            override fun isSelectableDate(utcTimeMillis: Long): Boolean =
+                utcTimeMillis <= latestAllowedDateMillis
+
+            override fun isSelectableYear(year: Int): Boolean = year <= latestAllowedDate.year
+        }
+    }
     val state = rememberDatePickerState(
         initialSelectedDateMillis = date
             .atStartOfDay(ZoneOffset.UTC)
             .toInstant()
             .toEpochMilli(),
+        selectableDates = selectableDates,
     )
     DatePickerDialog(
         onDismissRequest = onDismiss,

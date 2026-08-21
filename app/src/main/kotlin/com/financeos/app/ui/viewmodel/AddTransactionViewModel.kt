@@ -38,6 +38,7 @@ data class AddTransactionUiState(
     val categories: List<CategoryOptionUiState> = emptyList(),
     val selectedCategoryId: String? = null,
     val date: LocalDate = LocalDate.now(),
+    val latestAllowedDate: LocalDate = LocalDate.now(),
     val time: LocalTime = LocalTime.now().withSecond(0).withNano(0),
     val note: String = "",
     val isLoadingCategories: Boolean = true,
@@ -48,6 +49,7 @@ data class AddTransactionUiState(
     val canSave: Boolean
         get() = parseAmountInMinorUnits(amountInput) != null &&
             selectedCategoryId != null &&
+            isTransactionDateAllowed(date, latestAllowedDate) &&
             !isLoadingCategories &&
             !isSaving
 }
@@ -61,8 +63,17 @@ sealed interface AddTransactionEvent {
 class AddTransactionViewModel(
     private val addTransactionUseCase: AddTransactionUseCase,
     private val categoryRepository: CategoryRepository,
+    private val zoneId: ZoneId = ZoneId.systemDefault(),
+    currentDate: LocalDate? = null,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(AddTransactionUiState())
+    private val today = currentDate ?: LocalDate.now(zoneId)
+    private val _uiState = MutableStateFlow(
+        AddTransactionUiState(
+            date = today,
+            latestAllowedDate = today,
+            time = LocalTime.now(zoneId).withSecond(0).withNano(0),
+        ),
+    )
     val uiState: StateFlow<AddTransactionUiState> = _uiState.asStateFlow()
 
     // 保存成功属于一次性导航信号，不放入可重放的 UiState，避免旋转屏幕后重复返回。
@@ -113,6 +124,10 @@ class AddTransactionViewModel(
     }
 
     fun onDateChanged(date: LocalDate) {
+        if (!isTransactionDateAllowed(date, today)) {
+            _uiState.update { it.copy(errorMessage = "记账日期不能晚于今天") }
+            return
+        }
         _uiState.update { it.copy(date = date, errorMessage = null) }
     }
 
@@ -148,12 +163,17 @@ class AddTransactionViewModel(
             _uiState.update { it.copy(errorMessage = "请选择分类") }
             return
         }
+        // UI 已禁用未来日期，保存前再校验一次，避免状态恢复或外部调用绕过限制。
+        if (!isTransactionDateAllowed(current.date, today)) {
+            _uiState.update { it.copy(errorMessage = "记账日期不能晚于今天") }
+            return
+        }
 
         _uiState.update { it.copy(isSaving = true, amountError = null, errorMessage = null) }
         viewModelScope.launch {
             try {
                 val javaInstant = LocalDateTime.of(current.date, current.time)
-                    .atZone(ZoneId.systemDefault())
+                    .atZone(zoneId)
                     .toInstant()
                 addTransactionUseCase(
                     AddTransactionCommand(
@@ -237,3 +257,7 @@ class AddTransactionViewModel(
         const val MAX_NOTE_LENGTH = 200
     }
 }
+
+/** 今天可记录，但不允许创建任何未来日期的流水。 */
+internal fun isTransactionDateAllowed(date: LocalDate, today: LocalDate): Boolean =
+    !date.isAfter(today)

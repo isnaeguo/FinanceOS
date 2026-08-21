@@ -25,6 +25,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -55,6 +56,7 @@ import com.financeos.app.ui.components.LoadingState
 import com.financeos.app.ui.components.categoryIcon
 import com.financeos.app.ui.viewmodel.BudgetEditorUiState
 import com.financeos.app.ui.viewmodel.BudgetEvent
+import com.financeos.app.ui.viewmodel.BudgetMonthSelection
 import com.financeos.app.ui.viewmodel.BudgetUiState
 import com.financeos.app.ui.viewmodel.BudgetUsageUiState
 import com.financeos.app.ui.viewmodel.BudgetViewModel
@@ -76,6 +78,7 @@ internal fun BudgetRoute(viewModel: BudgetViewModel) {
         BudgetScreen(
             uiState = uiState,
             onRetry = viewModel::refresh,
+            onMonthSelected = viewModel::selectMonth,
             onEditTotal = viewModel::openTotalBudgetEditor,
             onAddCategory = viewModel::openNewCategoryBudgetEditor,
             onEditCategory = viewModel::openCategoryBudgetEditor,
@@ -91,11 +94,12 @@ internal fun BudgetRoute(viewModel: BudgetViewModel) {
     }
 }
 
-/** 当前月总预算和分类预算页面，指标只展示 ViewModel 已准备好的 UseCase 结果。 */
+/** 本月与下月的总预算和分类预算页面，指标只展示 ViewModel 已准备好的 UseCase 结果。 */
 @Composable
 internal fun BudgetScreen(
     uiState: BudgetUiState,
     onRetry: () -> Unit,
+    onMonthSelected: (BudgetMonthSelection) -> Unit,
     onEditTotal: () -> Unit,
     onAddCategory: () -> Unit,
     onEditCategory: (String) -> Unit,
@@ -140,11 +144,22 @@ internal fun BudgetScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 item {
-                    Text(
-                        text = uiState.monthLabel,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.titleMedium,
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            BudgetMonthSelection.entries.forEach { selection ->
+                                FilterChip(
+                                    selected = uiState.monthSelection == selection,
+                                    onClick = { onMonthSelected(selection) },
+                                    label = { Text(selection.label) },
+                                )
+                            }
+                        }
+                        Text(
+                            text = uiState.monthLabel,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
                 }
 
                 item {
@@ -155,12 +170,13 @@ internal fun BudgetScreen(
                     item {
                         if (total.hasBudget) {
                             BudgetUsageCard(
-                                title = "本月总预算",
+                                title = "${uiState.monthSelection.label}总预算",
                                 usage = total,
                                 onEdit = onEditTotal,
                             )
                         } else {
                             MissingTotalBudgetCard(
+                                periodLabel = uiState.monthSelection.label,
                                 amountUsedText = total.amountUsedText,
                                 onSetBudget = onEditTotal,
                             )
@@ -239,6 +255,7 @@ internal fun BudgetScreen(
 
 @Composable
 private fun MissingTotalBudgetCard(
+    periodLabel: String,
     amountUsedText: String,
     onSetBudget: () -> Unit,
 ) {
@@ -247,9 +264,9 @@ private fun MissingTotalBudgetCard(
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text("尚未设置本月总预算", style = MaterialTheme.typography.titleMedium)
+            Text("尚未设置${periodLabel}总预算", style = MaterialTheme.typography.titleMedium)
             Text(
-                text = "本月已使用 $amountUsedText。设置预算后即可查看剩余额度和使用比例。",
+                text = "${periodLabel}已使用 $amountUsedText。设置预算后即可查看剩余额度和使用比例。",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Button(onClick = onSetBudget) {

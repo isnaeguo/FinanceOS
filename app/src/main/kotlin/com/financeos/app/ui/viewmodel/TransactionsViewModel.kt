@@ -56,6 +56,7 @@ data class TransactionFilterOption(
 /** 流水列表页面状态。 */
 data class TransactionsUiState(
     val monthLabel: String,
+    val canShowNextMonth: Boolean = false,
     val isLoading: Boolean = true,
     val items: List<TransactionItemUiState> = emptyList(),
     val searchQuery: String = "",
@@ -82,10 +83,15 @@ class TransactionsViewModel(
     private val categoryRepository: CategoryRepository,
     private val zoneId: ZoneId = ZoneId.systemDefault(),
     initialMonth: YearMonth? = null,
+    currentMonth: YearMonth? = null,
 ) : ViewModel() {
-    private var selectedMonth = initialMonth ?: YearMonth.now(zoneId)
+    private val latestAllowedMonth = currentMonth ?: YearMonth.now(zoneId)
+    private var selectedMonth = minOf(initialMonth ?: latestAllowedMonth, latestAllowedMonth)
     private val _uiState = MutableStateFlow(
-        TransactionsUiState(monthLabel = monthFormatter.format(selectedMonth)),
+        TransactionsUiState(
+            monthLabel = monthFormatter.format(selectedMonth),
+            canShowNextMonth = selectedMonth < latestAllowedMonth,
+        ),
     )
     val uiState: StateFlow<TransactionsUiState> = _uiState.asStateFlow()
 
@@ -152,7 +158,7 @@ class TransactionsViewModel(
     }
 
     fun showNextMonth() {
-        selectMonth(selectedMonth.plusMonths(1))
+        nextTransactionMonthOrNull(selectedMonth, latestAllowedMonth)?.let(::selectMonth)
     }
 
     fun updateSearchQuery(query: String) {
@@ -224,11 +230,12 @@ class TransactionsViewModel(
     }
 
     private fun selectMonth(month: YearMonth) {
-        selectedMonth = month
+        selectedMonth = minOf(month, latestAllowedMonth)
         allItems = emptyList()
         _uiState.update {
             it.copy(
-                monthLabel = monthFormatter.format(month),
+                monthLabel = monthFormatter.format(selectedMonth),
+                canShowNextMonth = selectedMonth < latestAllowedMonth,
                 pendingDeleteItem = null,
                 isDeleting = false,
             )
@@ -297,6 +304,16 @@ class TransactionsViewModel(
             Locale.SIMPLIFIED_CHINESE,
         )
     }
+}
+
+/** 流水页只能向前回到当月，避免空的未来月份被误认为当前数据。 */
+internal fun nextTransactionMonthOrNull(
+    selectedMonth: YearMonth,
+    currentMonth: YearMonth,
+): YearMonth? = if (selectedMonth >= currentMonth) {
+    null
+} else {
+    minOf(selectedMonth.plusMonths(1), currentMonth)
 }
 
 private data class MappedTransactions(
