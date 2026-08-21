@@ -80,6 +80,7 @@ internal fun AddTransactionRoute(
         onDateChanged = viewModel::onDateChanged,
         onTimeChanged = viewModel::onTimeChanged,
         onNoteChanged = viewModel::onNoteChanged,
+        onRetryCategories = viewModel::retryCategories,
         onSave = viewModel::save,
     )
 }
@@ -95,6 +96,7 @@ internal fun AddTransactionScreen(
     onDateChanged: (LocalDate) -> Unit,
     onTimeChanged: (LocalTime) -> Unit,
     onNoteChanged: (String) -> Unit,
+    onRetryCategories: () -> Unit,
     onSave: () -> Unit,
 ) {
     val amountFocusRequester = remember { FocusRequester() }
@@ -175,10 +177,15 @@ internal fun AddTransactionScreen(
                     }
 
                     uiState.categories.isEmpty() -> {
-                        Text(
-                            text = "暂无可用分类",
-                            color = MaterialTheme.colorScheme.error,
-                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = "暂无可用分类",
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                            TextButton(onClick = onRetryCategories) {
+                                Text("重新加载")
+                            }
+                        }
                     }
 
                     else -> {
@@ -358,5 +365,8 @@ private fun TransactionTimePickerDialog(
     )
 }
 
-private val dateFormatter = DateTimeFormatter.ofPattern("M月d日", Locale.SIMPLIFIED_CHINESE)
+private val dateFormatter = DateTimeFormatter.ofPattern(
+    "yyyy年M月d日",
+    Locale.SIMPLIFIED_CHINESE,
+)
 private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.SIMPLIFIED_CHINESE)

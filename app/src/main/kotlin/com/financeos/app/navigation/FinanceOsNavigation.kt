@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.NavigationBar
@@ -29,6 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.compose.NavHost
@@ -37,11 +39,13 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.financeos.app.FinanceOsApplication
 import com.financeos.app.ui.screens.AddTransactionRoute
-import com.financeos.app.ui.screens.BudgetScreen
-import com.financeos.app.ui.screens.HomeScreen
+import com.financeos.app.ui.screens.BudgetRoute
+import com.financeos.app.ui.screens.HomeRoute
 import com.financeos.app.ui.screens.SettingsScreen
 import com.financeos.app.ui.screens.TransactionsRoute
 import com.financeos.app.ui.viewmodel.AddTransactionViewModel
+import com.financeos.app.ui.viewmodel.BudgetViewModel
+import com.financeos.app.ui.viewmodel.DashboardViewModel
 import com.financeos.app.ui.viewmodel.TransactionsViewModel
 
 private const val HOME_ROUTE = "home"
@@ -52,6 +56,7 @@ private const val SETTINGS_ROUTE = "settings"
 private const val TOP_LEVEL_FADE_DURATION_MILLIS = 90
 private const val SCREEN_ENTER_DURATION_MILLIS = 140
 private const val SCREEN_EXIT_DURATION_MILLIS = 70
+private const val COMPACT_FAB_FONT_SCALE = 1.5f
 
 private data class TopLevelDestination(
     val route: String,
@@ -77,6 +82,8 @@ fun FinanceOsNavigation() {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
     val currentRoute = currentDestination?.route ?: HOME_ROUTE
+    val useCompactFab = LocalDensity.current.fontScale >= COMPACT_FAB_FONT_SCALE
+    val showAddTransactionFab = currentRoute == HOME_ROUTE || currentRoute == TRANSACTIONS_ROUTE
     val isTopLevelDestination = topLevelDestinations.any { destination ->
         currentDestination?.hierarchy?.any { it.route == destination.route } == true
     } || backStackEntry == null
@@ -138,17 +145,28 @@ fun FinanceOsNavigation() {
             }
         },
         floatingActionButton = {
-            if (isTopLevelDestination) {
-                ExtendedFloatingActionButton(
-                    onClick = { navController.navigate(ADD_TRANSACTION_ROUTE) },
-                    icon = {
+            if (showAddTransactionFab) {
+                if (useCompactFab) {
+                    FloatingActionButton(
+                        onClick = { navController.navigate(ADD_TRANSACTION_ROUTE) },
+                    ) {
                         Icon(
                             imageVector = Icons.Default.Add,
-                            contentDescription = null,
+                            contentDescription = "记一笔",
                         )
-                    },
-                    text = { Text("记一笔") },
-                )
+                    }
+                } else {
+                    ExtendedFloatingActionButton(
+                        onClick = { navController.navigate(ADD_TRANSACTION_ROUTE) },
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = null,
+                            )
+                        },
+                        text = { Text("记一笔") },
+                    )
+                }
             }
         },
         content = { contentPadding ->
@@ -211,7 +229,14 @@ fun FinanceOsNavigation() {
                 },
             ) {
                 composable(HOME_ROUTE) {
-                    HomeScreen()
+                    val dashboardViewModel: DashboardViewModel = viewModel(
+                        factory = application.container.dashboardViewModelFactory,
+                    )
+                    HomeRoute(
+                        viewModel = dashboardViewModel,
+                        onOpenBudget = { navController.navigate(BUDGET_ROUTE) },
+                        onOpenTransactions = { navController.navigate(TRANSACTIONS_ROUTE) },
+                    )
                 }
                 composable(TRANSACTIONS_ROUTE) {
                     TransactionsRoute(
@@ -225,15 +250,14 @@ fun FinanceOsNavigation() {
                     )
                     AddTransactionRoute(
                         viewModel = addTransactionViewModel,
-                        onSaved = {
-                            // Repository 当前是一次性读取；保存后主动刷新，再返回即可立即看到新流水。
-                            transactionsViewModel.refresh()
-                            navController.popBackStack()
-                        },
+                        onSaved = { navController.popBackStack() },
                     )
                 }
                 composable(BUDGET_ROUTE) {
-                    BudgetScreen()
+                    val budgetViewModel: BudgetViewModel = viewModel(
+                        factory = application.container.budgetViewModelFactory,
+                    )
+                    BudgetRoute(viewModel = budgetViewModel)
                 }
                 composable(SETTINGS_ROUTE) {
                     SettingsScreen()

@@ -20,4 +20,17 @@ class MoneyInputTest {
         assertNull(parseAmountInMinorUnits("."))
         assertNull(parseAmountInMinorUnits(""))
     }
+
+    @Test
+    fun budgetInputCanRepresentExplicitZeroLimit() {
+        assertEquals(0L, parseAmountInMinorUnits("0", allowZero = true))
+        assertEquals(0L, parseAmountInMinorUnits("0.00", allowZero = true))
+    }
+
+    @Test
+    fun moneyDisplayUsesGroupingAndTwoDecimalPlaces() {
+        assertEquals("¥0.00", formatMoney(0L))
+        assertEquals("¥23.50", formatMoney(2_350L))
+        assertEquals("¥50,000.00", formatMoney(5_000_000L))
+    }
 }

@@ -69,7 +69,10 @@ class BulkExpenseDatasetTest {
                 getMonthlySummary = monthlySummary,
                 budgetRepository = FakeBudgetRepository(budgets),
             )
-            val dailyAvailableBudget = CalculateDailyAvailableBudgetUseCase(budgetStatus)
+            val dailyAvailableBudget = CalculateDailyAvailableBudgetUseCase(
+                budgetRepository = FakeBudgetRepository(budgets),
+                getMonthlyTransactions = monthlyTransactions,
+            )
 
             assertTrue(
                 transactionCount in MIN_TRANSACTION_COUNT..MAX_TRANSACTION_COUNT,
@@ -107,13 +110,28 @@ class BulkExpenseDatasetTest {
             }
 
             val currentDay = datasetIndex % DAYS_IN_AUGUST + 1
-            val daily = checkNotNull(dailyAvailableBudget(period, currentDay))
+            val startOfToday = Instant.parse(
+                "2026-08-${currentDay.toString().padStart(2, '0')}T00:00:00Z",
+            )
+            val daily = checkNotNull(
+                dailyAvailableBudget(period, currentDay, startOfToday),
+            )
             val expectedRemainingDays = DAYS_IN_AUGUST - currentDay + 1
+            val amountUsedBeforeToday = transactionRepository.transactions
+                .filter { transaction -> transaction.dateTime < startOfToday }
+                .sumOf { transaction -> transaction.amount }
+            val amountRemainingAtStartOfDay =
+                expectedTotal + TOTAL_BUDGET_BUFFER - amountUsedBeforeToday
             assertEquals(expectedRemainingDays, daily.remainingDays, "数据集 $datasetIndex 的剩余天数不一致")
             assertEquals(
-                TOTAL_BUDGET_BUFFER / expectedRemainingDays,
+                amountRemainingAtStartOfDay,
+                daily.amountRemaining,
+                "数据集 $datasetIndex 的日初剩余预算不一致",
+            )
+            assertEquals(
+                amountRemainingAtStartOfDay / expectedRemainingDays,
                 daily.dailyAmount,
-                "数据集 $datasetIndex 的日均可用预算不一致",
+                "数据集 $datasetIndex 的当天建议预算不一致",
             )
         }
     }

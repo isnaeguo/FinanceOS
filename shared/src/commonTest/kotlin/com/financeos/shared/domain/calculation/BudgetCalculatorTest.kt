@@ -17,6 +17,7 @@ class BudgetCalculatorTest {
             amountUsed = 25_000L,
         )
 
+        assertEquals(100_000L, usage.amountLimit)
         assertEquals(25_000L, usage.amountUsed)
         assertEquals(75_000L, usage.amountRemaining)
         assertEquals(0.25, usage.usageRatio)
@@ -54,6 +55,7 @@ class BudgetCalculatorTest {
         val usage = BudgetCalculator.calculate(budget = null, amountUsed = 500L)
 
         assertEquals(500L, usage.amountUsed)
+        assertNull(usage.amountLimit)
         assertNull(usage.amountRemaining)
         assertNull(usage.usageRatio)
         assertFalse(usage.isOverBudget)

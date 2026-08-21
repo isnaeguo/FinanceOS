@@ -9,6 +9,7 @@ import com.financeos.shared.domain.model.Budget
  * [usageRatio] 是无量纲比例，不用于保存或计算货币金额，因此可以安全使用 [Double]。
  */
 data class BudgetUsage(
+    val amountLimit: Long?,
     val amountUsed: Long,
     val amountRemaining: Long?,
     val usageRatio: Double?,
@@ -27,6 +28,7 @@ object BudgetCalculator {
         if (budget == null) {
             // 没有预算就不存在可比较的额度，因此不虚构剩余金额、比例或超支状态。
             return BudgetUsage(
+                amountLimit = null,
                 amountUsed = amountUsed,
                 amountRemaining = null,
                 usageRatio = null,
@@ -43,6 +45,7 @@ object BudgetCalculator {
         }
 
         return BudgetUsage(
+            amountLimit = budget.amountLimit,
             amountUsed = amountUsed,
             amountRemaining = budget.amountLimit - amountUsed,
             usageRatio = usageRatio,

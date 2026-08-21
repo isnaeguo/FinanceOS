@@ -5,6 +5,7 @@ import androidx.room3.Insert
 import androidx.room3.OnConflictStrategy
 import androidx.room3.Query
 import com.financeos.shared.data.local.entity.TransactionEntity
+import kotlinx.coroutines.flow.Flow
 
 /** 流水表的最小数据库访问接口。 */
 @Dao
@@ -36,4 +37,18 @@ interface TransactionDao {
         startEpochMillis: Long,
         endEpochMillis: Long,
     ): List<TransactionEntity>
+
+    /** 观察半开时间区间；表发生增删时由 Room 自动重新查询。 */
+    @Query(
+        """
+        SELECT * FROM transactions
+        WHERE date_time_epoch_millis >= :startEpochMillis
+          AND date_time_epoch_millis < :endEpochMillis
+        ORDER BY date_time_epoch_millis DESC, id DESC
+        """,
+    )
+    fun observeByPeriod(
+        startEpochMillis: Long,
+        endEpochMillis: Long,
+    ): Flow<List<TransactionEntity>>
 }

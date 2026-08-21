@@ -70,6 +70,40 @@ class MonthlyUseCasesTest {
     }
 
     @Test
+    fun dailyExpenseUsesHalfOpenLocalDayBoundariesAndIgnoresIncome() {
+        val useCase = CalculateDailyExpenseUseCase()
+        val result = useCase(
+            transactions = listOf(
+                transaction("before", "2026-08-20T23:59:59.999Z", amount = 9_000L),
+                transaction("start", "2026-08-21T00:00:00Z", amount = 1_000L),
+                transaction("income", "2026-08-21T12:00:00Z", amount = 8_000L, type = TransactionType.INCOME),
+                transaction("end", "2026-08-21T23:59:59.999Z", amount = 2_000L),
+                transaction("next-day", "2026-08-22T00:00:00Z", amount = 7_000L),
+            ),
+            startOfDayInclusive = Instant.parse("2026-08-21T00:00:00Z"),
+            startOfNextDayExclusive = Instant.parse("2026-08-22T00:00:00Z"),
+        )
+
+        assertEquals(3_000L, result)
+    }
+
+    @Test
+    fun dailyExpenseRejectsMoneyOverflow() {
+        val useCase = CalculateDailyExpenseUseCase()
+
+        assertFailsWith<IllegalArgumentException> {
+            useCase(
+                transactions = listOf(
+                    transaction("max", amount = Long.MAX_VALUE),
+                    transaction("overflow", amount = 1L),
+                ),
+                startOfDayInclusive = Instant.parse("2026-08-10T00:00:00Z"),
+                startOfNextDayExclusive = Instant.parse("2026-08-11T00:00:00Z"),
+            )
+        }
+    }
+
+    @Test
     fun budgetStatusCalculatesTotalAndConfiguredCategoryBudgets() = runTest {
         val month = BudgetMonth(2026, 8)
         val useCase = budgetStatusUseCase(
@@ -103,7 +137,11 @@ class MonthlyUseCasesTest {
             budgets = listOf(budget("total", month, 29_000L)),
         )
 
-        val result = useCase(period(2028, 2), currentDayOfMonth = 1)
+        val result = useCase(
+            period = period(2028, 2),
+            currentDayOfMonth = 1,
+            startOfToday = Instant.parse("2028-02-01T00:00:00Z"),
+        )
 
         assertEquals(1_000L, result?.dailyAmount)
         assertEquals(29_000L, result?.amountRemaining)
@@ -119,7 +157,11 @@ class MonthlyUseCasesTest {
             budgets = listOf(budget("total", month, 10_000L)),
         )
 
-        val result = useCase(period(2026, 4), currentDayOfMonth = 30)
+        val result = useCase(
+            period = period(2026, 4),
+            currentDayOfMonth = 30,
+            startOfToday = Instant.parse("2026-04-30T00:00:00Z"),
+        )
 
         assertEquals(3_000L, result?.dailyAmount)
         assertEquals(3_000L, result?.amountRemaining)
@@ -134,7 +176,11 @@ class MonthlyUseCasesTest {
             budgets = listOf(budget("total", month, 10_000L)),
         )
 
-        val result = useCase(period(2026, 8), currentDayOfMonth = 15)
+        val result = useCase(
+            period = period(2026, 8),
+            currentDayOfMonth = 15,
+            startOfToday = Instant.parse("2026-08-15T00:00:00Z"),
+        )
 
         assertEquals(0L, result?.dailyAmount)
         assertEquals(-2_000L, result?.amountRemaining)
@@ -149,7 +195,13 @@ class MonthlyUseCasesTest {
             budgets = emptyList(),
         )
 
-        assertNull(useCase(period(2026, 8), currentDayOfMonth = 10))
+        assertNull(
+            useCase(
+                period = period(2026, 8),
+                currentDayOfMonth = 10,
+                startOfToday = Instant.parse("2026-08-10T00:00:00Z"),
+            ),
+        )
     }
 
     @Test
@@ -161,8 +213,64 @@ class MonthlyUseCasesTest {
         )
 
         assertFailsWith<IllegalArgumentException> {
-            useCase(period(2026, 2), currentDayOfMonth = 29)
+            useCase(
+                period = period(2026, 2),
+                currentDayOfMonth = 29,
+                startOfToday = Instant.parse("2026-02-28T00:00:00Z"),
+            )
         }
+    }
+
+    @Test
+    fun transactionsCreatedTodayDoNotChangeTodaysAllocation() = runTest {
+        val month = BudgetMonth(2026, 8)
+        val beforeToday = transaction(
+            id = "before-today",
+            amount = 14_000L,
+            dateTime = "2026-08-14T23:59:59Z",
+        )
+        val transactionRepository = FakeTransactionRepository(listOf(beforeToday))
+        val useCase = CalculateDailyAvailableBudgetUseCase(
+            budgetRepository = FakeBudgetRepository(
+                listOf(budget("total", month, 31_000L)),
+            ),
+            getMonthlyTransactions = GetMonthlyTransactionsUseCase(transactionRepository),
+        )
+        val startOfToday = Instant.parse("2026-08-15T00:00:00Z")
+
+        val initialAllocation = useCase(period(2026, 8), 15, startOfToday)
+        transactionRepository.add(
+            transaction("today-start", "2026-08-15T00:00:00Z", amount = 10_000L),
+        )
+        transactionRepository.add(
+            transaction("today-later", "2026-08-15T18:00:00Z", amount = 15_000L),
+        )
+        val allocationAfterSpending = useCase(period(2026, 8), 15, startOfToday)
+
+        assertEquals(1_000L, initialAllocation?.dailyAmount)
+        assertEquals(initialAllocation, allocationAfterSpending)
+    }
+
+    @Test
+    fun nextDayRecalculatesUsingPreviousDaysFinalSpending() = runTest {
+        val month = BudgetMonth(2026, 8)
+        val useCase = dailyBudgetUseCase(
+            transactions = listOf(
+                transaction("earlier", "2026-08-14T23:59:59Z", amount = 14_000L),
+                transaction("yesterday", "2026-08-15T18:00:00Z", amount = 5_000L),
+            ),
+            budgets = listOf(budget("total", month, 31_000L)),
+        )
+
+        val result = useCase(
+            period = period(2026, 8),
+            currentDayOfMonth = 16,
+            startOfToday = Instant.parse("2026-08-16T00:00:00Z"),
+        )
+
+        assertEquals(750L, result?.dailyAmount)
+        assertEquals(12_000L, result?.amountRemaining)
+        assertEquals(16, result?.remainingDays)
     }
 
     private fun monthlySummaryUseCase(
@@ -183,7 +291,10 @@ class MonthlyUseCasesTest {
         transactions: List<Transaction>,
         budgets: List<Budget>,
     ): CalculateDailyAvailableBudgetUseCase = CalculateDailyAvailableBudgetUseCase(
-        getBudgetStatus = budgetStatusUseCase(transactions, budgets),
+        budgetRepository = FakeBudgetRepository(budgets),
+        getMonthlyTransactions = GetMonthlyTransactionsUseCase(
+            FakeTransactionRepository(transactions),
+        ),
     )
 
     private fun period(

@@ -16,7 +16,10 @@ internal fun normalizeAmountInput(rawInput: String): String? {
 /**
  * 将用户输入精确转换为最小货币单位，整个过程不经过 Double，避免二进制浮点误差。
  */
-internal fun parseAmountInMinorUnits(input: String): Long? {
+internal fun parseAmountInMinorUnits(
+    input: String,
+    allowZero: Boolean = false,
+): Long? {
     if (input.isBlank() || input == ".") return null
 
     val parts = input.split('.', limit = 2)
@@ -27,5 +30,18 @@ internal fun parseAmountInMinorUnits(input: String): Long? {
         ?.toLongOrNull()
         ?: 0L
     val amount = major * 100L + minor
-    return amount.takeIf { it > 0L }
+    return amount.takeIf { it > 0L || (allowZero && it == 0L) }
+}
+
+/** 使用统一的人民币符号、千位分隔和两位小数展示非负金额。 */
+internal fun formatMoney(amountMinor: Long): String {
+    require(amountMinor >= 0L) { "Money amount must not be negative." }
+    val major = amountMinor / 100L
+    val minor = amountMinor % 100L
+    val groupedMajor = major.toString()
+        .reversed()
+        .chunked(3)
+        .joinToString(",")
+        .reversed()
+    return "¥$groupedMajor.${minor.toString().padStart(2, '0')}"
 }

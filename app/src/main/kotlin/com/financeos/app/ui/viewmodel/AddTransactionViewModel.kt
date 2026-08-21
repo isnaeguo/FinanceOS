@@ -128,6 +128,10 @@ class AddTransactionViewModel(
         }
     }
 
+    fun retryCategories() {
+        if (!_uiState.value.isLoadingCategories) loadCategories()
+    }
+
     fun save() {
         val current = _uiState.value
         if (current.isSaving) return
@@ -183,6 +187,9 @@ class AddTransactionViewModel(
     }
 
     private fun loadCategories() {
+        _uiState.update {
+            it.copy(isLoadingCategories = true, errorMessage = null)
+        }
         viewModelScope.launch {
             try {
                 val defaultOrder = DefaultCategories.all
@@ -208,7 +215,7 @@ class AddTransactionViewModel(
                 _uiState.update {
                     it.copy(
                         isLoadingCategories = false,
-                        errorMessage = "分类加载失败，请返回后重试",
+                        errorMessage = "分类加载失败，请重试",
                     )
                 }
             }

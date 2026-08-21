@@ -5,6 +5,8 @@ import com.financeos.shared.data.local.mapper.toDomain
 import com.financeos.shared.data.local.mapper.toEntity
 import com.financeos.shared.domain.model.Transaction
 import com.financeos.shared.domain.repository.TransactionRepository
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlin.time.Instant
 
 /** 使用 Room DAO 实现流水业务存取。 */
@@ -32,5 +34,18 @@ class LocalTransactionRepository(
             startEpochMillis = startInclusive.toEpochMilliseconds(),
             endEpochMillis = endExclusive.toEpochMilliseconds(),
         ).map { it.toDomain() }
+    }
+
+    override fun observeByMonth(
+        startInclusive: Instant,
+        endExclusive: Instant,
+    ): Flow<List<Transaction>> {
+        require(startInclusive < endExclusive) {
+            "Transaction month range must have a positive duration."
+        }
+        return dao.observeByPeriod(
+            startEpochMillis = startInclusive.toEpochMilliseconds(),
+            endEpochMillis = endExclusive.toEpochMilliseconds(),
+        ).map { entities -> entities.map { it.toDomain() } }
     }
 }

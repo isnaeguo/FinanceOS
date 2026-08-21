@@ -3,3 +3,25 @@
 .kotlin/
 **/build/
 local.properties
+
+# Android Studio 本机状态
+*.iml
+.idea/caches/
+.idea/deviceManager.xml
+.idea/workspace.xml
+
+# 本地环境与签名材料
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+keystore.properties
+secrets.properties
+google-services.json
+
+# 已转换为 Android 启动图标资源的本地原图
+/1.png

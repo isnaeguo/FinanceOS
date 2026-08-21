@@ -2,9 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
         android:name=".FinanceOsApplication"
-        android:icon="@drawable/ic_launcher"
+        android:icon="@mipmap/ic_launcher"
         android:label="FinanceOS"
-        android:roundIcon="@drawable/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/AppTheme">
         <activity
             android:name=".MainActivity"

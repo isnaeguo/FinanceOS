@@ -1,6 +1,7 @@
 package com.financeos.shared.domain.repository
 
 import com.financeos.shared.domain.model.Transaction
+import kotlinx.coroutines.flow.Flow
 import kotlin.time.Instant
 
 /** 定义流水存取所需的最小业务能力，不暴露具体存储技术。 */
@@ -27,4 +28,14 @@ interface TransactionRepository {
         startInclusive: Instant,
         endExclusive: Instant,
     ): List<Transaction>
+
+    /**
+     * 持续观察指定本地月份的流水。
+     *
+     * 新增或删除数据后会重新发出结果，使流水页以及未来 Dashboard 能共享同一响应式数据源。
+     */
+    fun observeByMonth(
+        startInclusive: Instant,
+        endExclusive: Instant,
+    ): Flow<List<Transaction>>
 }

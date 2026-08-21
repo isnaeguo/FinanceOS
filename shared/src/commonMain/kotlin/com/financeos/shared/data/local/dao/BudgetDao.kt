@@ -5,6 +5,7 @@ import androidx.room3.Insert
 import androidx.room3.OnConflictStrategy
 import androidx.room3.Query
 import com.financeos.shared.data.local.entity.BudgetEntity
+import kotlinx.coroutines.flow.Flow
 
 /** 预算表的最小数据库访问接口。 */
 @Dao
@@ -31,4 +32,11 @@ interface BudgetDao {
         year: Int,
         month: Int,
     ): List<BudgetEntity>
+
+    /** 预算表变化后重新发出指定月份的真实结果。 */
+    @Query("SELECT * FROM budgets WHERE year = :year AND month = :month ORDER BY category_key")
+    fun observeByMonth(
+        year: Int,
+        month: Int,
+    ): Flow<List<BudgetEntity>>
 }

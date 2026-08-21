@@ -26,6 +26,7 @@ kotlin {
         commonMain.dependencies {
             implementation(libs.androidx.room3.runtime)
             implementation(libs.androidx.sqlite.bundled)
+            implementation(libs.kotlinx.coroutines.core)
         }
 
         commonTest.dependencies {
@@ -42,4 +43,12 @@ dependencies {
 
 room3 {
     schemaDirectory("$projectDir/schemas")
+}
+
+// 当前 AGP/KSP 组合未自动声明 Host Test Lint 对生成源码的依赖，显式排序可避免 Gradle 9 拒绝完整 build。
+tasks.matching {
+    it.name == "generateAndroidHostTestLintModel" ||
+        it.name == "lintAnalyzeAndroidHostTest"
+}.configureEach {
+    dependsOn("kspAndroidHostTest")
 }

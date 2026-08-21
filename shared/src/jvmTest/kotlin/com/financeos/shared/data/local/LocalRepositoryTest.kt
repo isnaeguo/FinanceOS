@@ -12,6 +12,10 @@ import com.financeos.shared.domain.model.TransactionType
 import com.financeos.shared.domain.usecase.AddTransactionCommand
 import com.financeos.shared.domain.usecase.AddTransactionUseCase
 import java.nio.file.Files
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -22,7 +26,7 @@ import kotlin.time.Instant
 
 class LocalRepositoryTest {
     @Test
-    fun addTransactionUseCasePersistsLunchExpenseAfterDatabaseReopen() = runTest {
+    fun addAndDeleteTransactionPersistAcrossDatabaseReopen() = runTest {
         val directory = Files.createTempDirectory("financeos-room-test").toFile()
         val databaseFile = directory.resolve("financeos.db")
         val transaction = expense(
@@ -37,6 +41,12 @@ class LocalRepositoryTest {
             amountLimit = 300_000L,
         )
         val updatedBudget = originalBudget.copy(amountLimit = 350_000L)
+        val categoryBudget = Budget(
+            id = "budget-food-2026-08",
+            month = BudgetMonth(2026, 8),
+            amountLimit = 80_000L,
+            categoryId = "system-food",
+        )
 
         try {
             val firstDatabase = openFileDatabase(databaseFile.absolutePath)
@@ -57,6 +67,7 @@ class LocalRepositoryTest {
                 val budgetRepository = LocalBudgetRepository(firstDatabase.budgetDao())
                 budgetRepository.save(originalBudget)
                 budgetRepository.save(updatedBudget)
+                budgetRepository.save(categoryBudget)
 
                 assertEquals(
                     DefaultCategories.all.map { it.id }.sorted(),
@@ -68,20 +79,44 @@ class LocalRepositoryTest {
 
             val reopenedDatabase = openFileDatabase(databaseFile.absolutePath)
             try {
+                val transactionRepository = LocalTransactionRepository(reopenedDatabase.transactionDao())
                 assertEquals(
                     transaction,
-                    LocalTransactionRepository(reopenedDatabase.transactionDao()).get(transaction.id),
+                    transactionRepository.get(transaction.id),
                 )
                 assertEquals(
                     updatedBudget,
                     LocalBudgetRepository(reopenedDatabase.budgetDao()).get(BudgetMonth(2026, 8)),
                 )
                 assertEquals(
+                    categoryBudget,
+                    LocalBudgetRepository(reopenedDatabase.budgetDao()).get(
+                        month = BudgetMonth(2026, 8),
+                        categoryId = "system-food",
+                    ),
+                )
+                assertEquals(
                     DefaultCategories.all.map { it.id }.sorted(),
                     LocalCategoryRepository(reopenedDatabase.categoryDao()).getAll().map { it.id }.sorted(),
                 )
+                assertTrue(transactionRepository.delete(transaction.id))
             } finally {
                 reopenedDatabase.close()
+            }
+
+            val databaseAfterDelete = openFileDatabase(databaseFile.absolutePath)
+            try {
+                val budgetRepository = LocalBudgetRepository(databaseAfterDelete.budgetDao())
+                assertNull(
+                    LocalTransactionRepository(databaseAfterDelete.transactionDao()).get(transaction.id),
+                )
+                assertEquals(updatedBudget, budgetRepository.get(BudgetMonth(2026, 8)))
+                assertEquals(
+                    categoryBudget,
+                    budgetRepository.get(BudgetMonth(2026, 8), "system-food"),
+                )
+            } finally {
+                databaseAfterDelete.close()
             }
         } finally {
             directory.deleteRecursively()
@@ -115,6 +150,80 @@ class LocalRepositoryTest {
             assertNull(repository.get(august.id))
             assertEquals(listOf(september), repository.getAll())
             assertFalse(repository.delete(august.id))
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun monthObserverEmitsAfterAddAndDelete() = runTest {
+        val database = openMemoryDatabase()
+        try {
+            val repository = LocalTransactionRepository(database.transactionDao())
+            val transaction = expense(
+                id = "transaction-observed",
+                dateTime = Instant.parse("2026-08-21T05:00:00Z"),
+            )
+            val emissions = mutableListOf<List<Transaction>>()
+            val emissionSignal = Channel<Unit>(capacity = Channel.UNLIMITED)
+            val observationJob = launch(start = CoroutineStart.UNDISPATCHED) {
+                repository.observeByMonth(
+                    startInclusive = Instant.parse("2026-08-01T00:00:00Z"),
+                    endExclusive = Instant.parse("2026-09-01T00:00:00Z"),
+                ).collect { transactions ->
+                    emissions += transactions
+                    emissionSignal.send(Unit)
+                }
+            }
+
+            // 每次等待 Room 发出结果后再写下一次，避免快速写入被数据库失效通知合并。
+            emissionSignal.receive()
+            repository.add(transaction)
+            emissionSignal.receive()
+            repository.delete(transaction.id)
+            emissionSignal.receive()
+            observationJob.cancel()
+
+            assertEquals(
+                listOf(emptyList(), listOf(transaction), emptyList()),
+                emissions,
+            )
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun budgetObserverEmitsAfterCreateAndUpdate() = runTest {
+        val database = openMemoryDatabase()
+        try {
+            val repository = LocalBudgetRepository(database.budgetDao())
+            val original = Budget(
+                id = "budget-observed",
+                month = BudgetMonth(2026, 8),
+                amountLimit = 100_000L,
+            )
+            val updated = original.copy(amountLimit = 120_000L)
+            val emissions = mutableListOf<List<Budget>>()
+            val emissionSignal = Channel<Unit>(capacity = Channel.UNLIMITED)
+            val observationJob = launch(start = CoroutineStart.UNDISPATCHED) {
+                repository.observeByMonth(BudgetMonth(2026, 8)).collect { budgets ->
+                    emissions += budgets
+                    emissionSignal.send(Unit)
+                }
+            }
+
+            emissionSignal.receive()
+            repository.save(original)
+            emissionSignal.receive()
+            repository.save(updated)
+            emissionSignal.receive()
+            observationJob.cancel()
+
+            assertEquals(
+                listOf(emptyList(), listOf(original), listOf(updated)),
+                emissions,
+            )
         } finally {
             database.close()
         }

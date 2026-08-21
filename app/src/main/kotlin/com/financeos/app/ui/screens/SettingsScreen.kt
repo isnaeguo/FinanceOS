@@ -9,17 +9,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 
-/** 设置页框架，不提前加入登录、同步等 v0.1 范围外功能。 */
+/** 设置页仅展示 v0.1 当前有效的数据说明和版本信息。 */
 @Composable
 internal fun SettingsScreen() {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
-        item {
-            ListItem(
-                headlineContent = { Text("货币与金额") },
-                supportingContent = { Text("金额显示设置将在后续阶段接入") },
-            )
-        }
-        item { HorizontalDivider() }
         item {
             ListItem(
                 headlineContent = { Text("数据与隐私") },
@@ -32,7 +25,7 @@ internal fun SettingsScreen() {
                 headlineContent = { Text("关于 FinanceOS") },
                 supportingContent = {
                     Text(
-                        text = "版本 0.1.0",
+                        text = "版本 0.1.0 · isnaeguo",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 },
