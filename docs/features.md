@@ -1,6 +1,19 @@
-## Features (Update in 2026/8/21)
+## v0.1 功能范围（更新于 2026/8/21）
 
-- Expense tracking
-- Budget management
-- Dashboard visualization
-- Local data storage
+- 记录收入
+- 记录支出
+- 分类
+- 历史流水
+- 月总预算
+- 分类预算
+- Dashboard
+- 每日可用预算
+- 本地数据库
+
+## v0.1 暂不包含
+
+- 云同步与多设备同步
+- 登录
+- AI 分析
+- OCR
+- 银行账单导入

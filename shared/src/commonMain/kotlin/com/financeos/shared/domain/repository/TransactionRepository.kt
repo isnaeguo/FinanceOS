@@ -1,0 +1,30 @@
+package com.financeos.shared.domain.repository
+
+import com.financeos.shared.domain.model.Transaction
+import kotlin.time.Instant
+
+/** 定义流水存取所需的最小业务能力，不暴露具体存储技术。 */
+interface TransactionRepository {
+    /** 新增一笔流水。 */
+    suspend fun add(transaction: Transaction)
+
+    /** 按 ID 删除流水；实际删除成功时返回 `true`。 */
+    suspend fun delete(id: String): Boolean
+
+    /** 按 ID 获取流水，不存在时返回 `null`。 */
+    suspend fun get(id: String): Transaction?
+
+    /** 获取全部流水。 */
+    suspend fun getAll(): List<Transaction>
+
+    /**
+     * 获取指定本地月份对应的流水。
+     *
+     * 月份边界由调用方按照用户时区转换为 `startInclusive <= time < endExclusive` 的 [Instant] 区间，
+     * 避免 Repository 隐式采用错误时区。
+     */
+    suspend fun getByMonth(
+        startInclusive: Instant,
+        endExclusive: Instant,
+    ): List<Transaction>
+}
