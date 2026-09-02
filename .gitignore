@@ -37,3 +37,4 @@ apple-macos/Resources/icon-master.png
 DerivedData/
 ios/**/xcuserdata/
 ios/**/*.xcworkspace/xcuserdata/
+**/xcuserdata/
