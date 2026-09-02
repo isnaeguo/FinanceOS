@@ -1,0 +1,63 @@
+name: FinanceOS
+options:
+  bundleIdPrefix: com.financeos
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+targets:
+  FinanceOSCore:
+    type: framework
+    platform: macOS
+    sources: [Core]
+    settings:
+      base:
+        MACH_O_TYPE: staticlib
+        SKIP_INSTALL: YES
+        GENERATE_INFOPLIST_FILE: YES
+  FinanceOS:
+    type: application
+    platform: macOS
+    sources:
+      - MacViews
+      - Assets.xcassets
+    dependencies:
+      - target: FinanceOSCore
+      - target: FinanceOSWidget
+    entitlements:
+      path: App.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.financeos.mac
+        INFOPLIST_FILE: AppInfo.plist
+        CODE_SIGN_ENTITLEMENTS: App.entitlements
+        CURRENT_PROJECT_VERSION: "5"
+        MARKETING_VERSION: "0.4.1"
+        CODE_SIGN_STYLE: Automatic
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+  FinanceOSWidget:
+    type: app-extension
+    platform: macOS
+    sources: [Widget]
+    dependencies:
+      - target: FinanceOSCore
+    entitlements:
+      path: Widget.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.financeos.mac.widget
+        INFOPLIST_FILE: WidgetInfo.plist
+        CODE_SIGN_ENTITLEMENTS: Widget.entitlements
+        CURRENT_PROJECT_VERSION: "5"
+        MARKETING_VERSION: "0.4.1"
+        CODE_SIGN_STYLE: Automatic
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES

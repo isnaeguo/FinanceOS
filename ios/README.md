@@ -25,3 +25,31 @@
 - UI 层面可直接参考 `apple-macos/Sources/FinanceOSMac/Views/`（SwiftUI 视图结构，
   Liquid Glass 部分仅 macOS 生效，iOS 用普通 SwiftUI 容器即可）。
 - 正式 iOS 工程建议用 Xcode 创建后提交到本仓库 `ios/`（含 .xcodeproj）。
+
+# 现状（2026-09）
+
+`ios/FinanceOSiOS/` 已是一个可直接打开的 SwiftUI Xcode 工程（由 XcodeGen 生成）：
+
+```sh
+cd ios/FinanceOSiOS
+xcodegen generate          # 改过 project.yml 后重新生成
+open FinanceOSiOS.xcodeproj
+```
+
+- iOS App（iOS 17+）含：总览（月份切换）/ 流水（搜索、金额排序、编辑与删除）/ 预算（任意历史月份）/ 数据（导入 JSON·CSV·XLSX，导出，备份恢复）。
+- 业务逻辑直接复用 `apple-macos/Sources/FinanceOSCore`（XLSX 解析已改用 zlib，iOS 无需任何 macOS 工具；引用同一目录，两端单源）。
+- Info.plist 由 build settings 生成（NSLocalNetworkUsageDescription 已声明，供后续局域网共享使用）。
+- 真机运行：在 Xcode 的 Signing & Capabilities 里选择你的开发者 Team（Bundle ID com.financeos.ios）。
+- 局域网共享（iOS）与 iOS 小组件为下一步迭代，UI 层可参考 macOS Views。
+
+## 小组件与网络共享（iOS）
+
+- 小组件：`FinanceOSiOSWidget`（本月已用 / 每日可用 / 本月剩余，小·中·大）。App 与小组件通过
+  **App Group `group.com.financeos.ios`** 共享 `store.json`。
+- 局域网共享：数据页 → 局域网共享（与 macOS/Android 同一明文 HTTP 协议，默认端口 45678；
+  Info.plist 已声明 NSLocalNetworkUsageDescription 与 NSAllowsLocalNetworking）。
+- Xcode 必做两步（真机/模拟器均可）：
+  1. App 与 `FinanceOSiOSWidget` 两个 target 的 Signing & Capabilities 都添加 App Groups，
+     勾选 `group.com.financeos.ios`（entitlements 已预置，选择你的 Team 后生效）；
+  2. 选中你的开发者 Team。
+  未启用 App Group 时 App 正常使用自己的容器，仅小组件显示“打开 FinanceOS 后重试”。

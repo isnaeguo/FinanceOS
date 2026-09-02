@@ -31,6 +31,12 @@ class FinanceOsApplication : Application() {
     internal val container: FinanceOsAppContainer by lazy {
         FinanceOsAppContainer(applicationContext)
     }
+
+    override fun onCreate() {
+        super.onCreate()
+        // 数据变更后广播刷新主屏小组件，避免等待系统 30 分钟周期。
+        com.financeos.app.widget.WidgetRefresher.ensure(this)
+    }
 }
 
 /**

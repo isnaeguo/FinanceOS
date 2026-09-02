@@ -172,7 +172,10 @@ struct DataBackupView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Label("关于", systemImage: "info.circle")
                     .font(.headline)
-                Text("FinanceOS for macOS · 基于 FinanceOS shared 领域模型构建的原生 Liquid Glass 应用。")
+                Text("FinanceOS for macOS · 版本 0.4.2 · isnaeguo")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Text("基于 FinanceOS shared 领域模型构建的原生 Liquid Glass 应用。")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 HStack(spacing: 8) {

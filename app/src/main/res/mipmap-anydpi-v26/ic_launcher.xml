@@ -2,7 +2,7 @@
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     tools:ignore="ObsoleteSdkInt">
-    <background android:drawable="@android:color/white" />
-    <foreground android:drawable="@drawable/ic_launcher_foreground" />
-    <monochrome android:drawable="@drawable/ic_launcher_foreground" />
+    <background android:drawable="@drawable/ic_launcher_adaptive" />
+    <foreground android:drawable="@android:color/transparent" />
+    <monochrome android:drawable="@android:color/transparent" />
 </adaptive-icon>

@@ -1,5 +1,4 @@
 import SwiftUI
-import WidgetKit
 import FinanceOSCore
 
 /// 跨页面的轻量路由状态，供菜单栏命令触发各页面的动作。
@@ -75,12 +74,6 @@ struct RootView: View {
         NavigationSplitView(sidebar: { sidebar }, detail: { detailPane })
             .sheet(isPresented: $router.isAddSheetPresented) {
                 AddTransactionSheet(store: store, draft: TransactionDraft.new())
-            }
-            // 数据落盘成功后通知小组件即时刷新，保证“本月概览”始终接近实时。
-            .onReceive(NotificationCenter.default.publisher(for: .financeosDataDidChange)) { _ in
-                Task { @MainActor in
-                    WidgetCenter.shared.reloadTimelines(ofKind: "FinanceOSWidget")
-                }
             }
     }
 

@@ -2,7 +2,9 @@ package com.financeos.app.widget
 
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
+import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import kotlinx.coroutines.runBlocking
 
@@ -13,6 +15,21 @@ import kotlinx.coroutines.runBlocking
  * 因此使用 applicationContext 读取数据库；读取与计算放到后台线程并在 goAsync 生命周期内完成。
  */
 class FinanceWidgetProvider : AppWidgetProvider() {
+
+    companion object {
+        const val ACTION_REFRESH = "com.financeos.app.widget.ACTION_REFRESH"
+    }
+
+    override fun onReceive(context: Context, intent: Intent) {
+        super.onReceive(context, intent)
+        if (intent.action == ACTION_REFRESH) {
+            val manager = AppWidgetManager.getInstance(context)
+            val ids = manager.getAppWidgetIds(
+                ComponentName(context, FinanceWidgetProvider::class.java),
+            )
+            refresh(context, manager, ids)
+        }
+    }
 
     override fun onUpdate(
         context: Context,

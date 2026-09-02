@@ -8,7 +8,6 @@ import android.widget.RemoteViews
 import com.financeos.app.MainActivity
 import com.financeos.app.R
 import com.financeos.app.data.FinanceDataBridge
-import com.financeos.app.ui.viewmodel.formatMoney
 import com.financeos.app.ui.viewmodel.toMonthPeriod
 import com.financeos.shared.domain.usecase.CalculateDailyAvailableBudgetUseCase
 import com.financeos.shared.domain.usecase.GetMonthlySummaryUseCase
@@ -83,10 +82,10 @@ internal object FinanceWidgetUpdater {
         )
 
         return FinanceWidgetData(
-            monthlyUsedText = formatMoney(used),
+            monthlyUsedText = formatMoneyWholeYuan(used),
             dailyAvailableText = when {
                 !hasBudget -> "未设预算"
-                else -> formatMoney(dailyAvailable?.dailyAmount ?: 0L)
+                else -> formatMoneyWholeYuan(dailyAvailable?.dailyAmount ?: 0L)
             },
             remainingText = if (!hasBudget) {
                 "未设预算"
@@ -94,9 +93,9 @@ internal object FinanceWidgetUpdater {
                 // 已设预算时 remaining 一定非空，这里兜底以避免空安全误判。
                 val remainingAfterBudget = remaining ?: 0L
                 if (remainingAfterBudget < 0L) {
-                    "−" + formatMoney(-remainingAfterBudget)
+                    "-" + formatMoneyWholeYuan(-remainingAfterBudget)
                 } else {
-                    formatMoney(remainingAfterBudget)
+                    formatMoneyWholeYuan(remainingAfterBudget)
                 }
             },
             hasBudget = hasBudget,
@@ -157,4 +156,17 @@ internal object FinanceWidgetUpdater {
         )
         return views
     }
+
+/** 小组件金额：四舍五入到整数“元”，千分位显示，节省 2x1 空间。 */
+private fun formatMoneyWholeYuan(minor: Long): String {
+    val sign = if (minor < 0) "-" else ""
+    val magnitude = kotlin.math.abs(minor)
+    val rounded = (magnitude + 50) / 100
+    val grouped = rounded.toString()
+        .reversed()
+        .chunked(3)
+        .joinToString(",")
+        .reversed()
+    return "$sign¥$grouped"
+}
 }

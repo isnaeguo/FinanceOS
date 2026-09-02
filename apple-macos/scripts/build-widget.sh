@@ -11,7 +11,7 @@ WIDGET_SOURCES="Sources/FinanceOSWidgetWidgets"
 DOMAIN_SOURCES="Sources/FinanceOSCore/Domain"
 BUILD_DIR=".build/widget"
 APPEX="$BUILD_DIR/$WIDGET_NAME.appex"
-VERSION="0.4.0"
+VERSION="0.4.2"
 
 # 1) 编译为可执行文件（-parse-as-library：让 @main WidgetBundle 生效）
 rm -rf "$BUILD_DIR"
@@ -22,7 +22,7 @@ xcrun swiftc -parse-as-library -O \
   "$DOMAIN_SOURCES"/*.swift \
   -o "$BUILD_DIR/$WIDGET_NAME" \
   -framework SwiftUI \
-  -framework WidgetKit
+  -framework WidgetKit -framework AppKit
 
 cp "$BUILD_DIR/$WIDGET_NAME" "$APPEX/Contents/MacOS/$WIDGET_NAME"
 

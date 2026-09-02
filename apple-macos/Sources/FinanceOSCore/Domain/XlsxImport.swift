@@ -1,15 +1,13 @@
-#if os(macOS)
 import Foundation
-import CoreFoundation
+import zlib
 
 /// 从 .xlsx 读取第一个工作表并按“行”原样还原为 CSV 文本。
 ///
 /// 还原的 CSV 仍保留文件原始的行顺序（含顶部说明行），随后交给
 /// FlexibleSpreadsheetImporter 完成表头自动定位、跳过、分类与 ID 处理，
-/// 因此与直接导入 CSV 行为完全一致（不转置、不丢行）。
+/// 因此与直接导入 CSV 行为完全一致（不转置、不丢行）。zip 解压使用 zlib，
+/// iOS 与 macOS 通用（不依赖 macOS 的系统工具）。
 public enum XlsxImportReader {
-    private static let zipMagicPK: UInt32 = 0x504b0304
-
     public static func isXlsx(_ data: Data) -> Bool {
         guard data.count >= 4 else { return false }
         let bytes = [UInt8](data.prefix(4))
@@ -18,28 +16,13 @@ public enum XlsxImportReader {
 
     /// 解压并读取第一张工作表，返回按行组织的网格（行 = 数组，单元格顺序即列顺序）。
     public static func readFirstSheet(_ data: Data) throws -> [[String]] {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("financeos-xlsx-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let zip = directory.appendingPathComponent("book.zip")
-        try data.write(to: zip)
-
-        // 用系统 ditto 解压（macOS 自带，支持 zip）
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-        process.arguments = ["-x", "-k", zip.path, directory.path]
-        try process.run()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
+        let parts = try readZipEntries(data)
+        guard !parts.isEmpty else {
             throw DataTransferError(message: "所选文件不是有效的 XLSX。")
         }
-
         func text(_ name: String) -> String? {
-            let url = directory.appendingPathComponent(name)
-            return try? String(contentsOf: url, encoding: .utf8)
+            parts[name].flatMap { String(data: $0, encoding: .utf8) }
         }
-
         let sharedStrings = parseSharedStrings(text("xl/sharedStrings.xml"))
         let sheetPath = resolveFirstSheetPath(
             workbook: text("xl/workbook.xml"),
@@ -63,6 +46,95 @@ public enum XlsxImportReader {
         return needsQuotes ? "\"\(value.replacingOccurrences(of: "\"", with: "\"\""))\"" : value
     }
 
+
+    // MARK: - zip 内存解压（zlib，iOS/macOS 通用）
+
+    private static func readZipEntries(_ data: Data) throws -> [String: Data] {
+        let bytes = [UInt8](data)
+        guard bytes.count > 22 else { throw DataTransferError(message: "所选文件不是有效的 XLSX。") }
+        // 定位 EOCD（PK 05 06）
+        var eocd = -1
+        var index = bytes.count - 22
+        let lower = max(0, bytes.count - 66_000)
+        while index >= lower {
+            if bytes[index] == 0x50, bytes[index + 1] == 0x4B, bytes[index + 2] == 0x05, bytes[index + 3] == 0x06 {
+                eocd = index
+                break
+            }
+            index -= 1
+        }
+        guard eocd >= 0 else { throw DataTransferError(message: "所选文件不是有效的 XLSX。") }
+        let totalEntries = Int(u16(bytes, eocd + 10))
+        let centralOffset = Int(u32(bytes, eocd + 16))
+        var cursor = centralOffset
+        var result: [String: Data] = [:]
+        for _ in 0..<totalEntries {
+            guard cursor + 46 <= bytes.count,
+                  bytes[cursor] == 0x50, bytes[cursor + 1] == 0x4B,
+                  bytes[cursor + 2] == 0x01, bytes[cursor + 3] == 0x02 else { break }
+            let method = Int(u16(bytes, cursor + 10))
+            let compressedSize = Int(u32(bytes, cursor + 20))
+            let uncompressedSize = Int(u32(bytes, cursor + 24))
+            let nameLength = Int(u16(bytes, cursor + 28))
+            let extraLength = Int(u16(bytes, cursor + 30))
+            let commentLength = Int(u16(bytes, cursor + 32))
+            let localOffset = Int(u32(bytes, cursor + 42))
+            let name = String(decoding: bytes[(cursor + 46)..<(cursor + 46 + nameLength)], as: UTF8.self)
+            cursor += 46 + nameLength + extraLength + commentLength
+
+            guard localOffset + 30 <= bytes.count,
+                  bytes[localOffset] == 0x50, bytes[localOffset + 1] == 0x4B,
+                  bytes[localOffset + 2] == 0x03, bytes[localOffset + 3] == 0x04 else { continue }
+            let localNameLength = Int(u16(bytes, localOffset + 26))
+            let localExtraLength = Int(u16(bytes, localOffset + 28))
+            let dataStart = localOffset + 30 + localNameLength + localExtraLength
+            guard dataStart + compressedSize <= bytes.count, !name.hasSuffix("/") else { continue }
+            let slice = Data(bytes[dataStart..<(dataStart + compressedSize)])
+            if method == 8 {
+                if let inflated = rawInflate(slice, expectedSize: uncompressedSize) {
+                    result[name] = inflated
+                }
+            } else if method == 0 {
+                result[name] = slice
+            }
+        }
+        return result
+    }
+
+    private static func u16(_ bytes: [UInt8], _ offset: Int) -> UInt16 {
+        UInt16(bytes[offset]) | (UInt16(bytes[offset + 1]) << 8)
+    }
+
+    private static func u32(_ bytes: [UInt8], _ offset: Int) -> UInt32 {
+        UInt32(bytes[offset]) |
+            (UInt32(bytes[offset + 1]) << 8) |
+            (UInt32(bytes[offset + 2]) << 16) |
+            (UInt32(bytes[offset + 3]) << 24)
+    }
+
+    private static func rawInflate(_ data: Data, expectedSize: Int) -> Data? {
+        guard expectedSize >= 0 else { return nil }
+        var out = Data(count: expectedSize)
+        let capacity = out.count
+        let status: Int32 = data.withUnsafeBytes { srcRaw in
+            guard let srcBase = srcRaw.bindMemory(to: Bytef.self).baseAddress else { return Int32(Z_DATA_ERROR) }
+            return out.withUnsafeMutableBytes { dstRaw in
+                guard let dstBase = dstRaw.bindMemory(to: Bytef.self).baseAddress else { return Int32(Z_DATA_ERROR) }
+                var stream = z_stream()
+                stream.next_in = UnsafeMutablePointer(mutating: srcBase)
+                stream.avail_in = uInt(data.count)
+                stream.next_out = dstBase
+                stream.avail_out = uInt(capacity)
+                let initResult = inflateInit2_(&stream, -MAX_WBITS, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size))
+                guard initResult == Z_OK else { return initResult }
+                defer { inflateEnd(&stream) }
+                return inflate(&stream, Z_FINISH)
+            }
+        }
+        return status == Z_STREAM_END ? out : nil
+    }
+
+    // MARK: - 按行解析（与跨端校验一致的实现）
     // MARK: - 按行解析（与跨端校验一致的实现）
 
     private static func parseSharedStrings(_ data: String?) -> [String] {
@@ -203,4 +275,3 @@ public enum XlsxImportReader {
     }
 }
 
-#endif

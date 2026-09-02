@@ -11,11 +11,19 @@ public protocol StoreLocationProviding: Sendable {
     func storeURL() -> URL
 }
 
-/// 将数据保存在 `~/Library/Application Support/FinanceOS/store.json`。
+/// 数据存放：优先 App Group 容器（macOS 小组件 / iOS 小组件与 App 共享同一份数据）；
+/// 未启用 App Group 时回退到 App 自身 Application Support（macOS 现状与 iOS 无组配置时）。
 public struct DefaultStoreLocation: StoreLocationProviding {
+    /// 小组件与 App 共享的 App Group；需在 Xcode 的 Signing & Capabilities 为 App 与小组件
+    /// 同时开启该 App Group（不一致时会自动回退，互不影响）。
+    public static let appGroupIdentifier = "group.com.financeos.ios"
+
     public init() {}
 
     public func storeURL() -> URL {
+        if let group = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: Self.appGroupIdentifier) {
+            return group.appendingPathComponent("FinanceOS/store.json")
+        }
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return base.appendingPathComponent("FinanceOS", isDirectory: true)
             .appendingPathComponent("store.json")
@@ -306,14 +314,11 @@ public final class FinanceStore {
     /// 导入用户选择的原始文件：自动识别 XLSX（zip）或 CSV 文本（UTF-8/GB18030）。
     /// XLSX 按行读取后走与 CSV 完全相同的宽容导入（含去重 ID 与 0.45 元过滤）。
     public func importSpreadsheetFile(_ data: Data) throws -> FinanceDataImportResult {
-        // XLSX 解压依赖系统 ditto，仅 macOS 可用；iOS 端走文本/CSV 路径。
-        #if os(macOS)
         if XlsxImportReader.isXlsx(data) {
             let grid = try XlsxImportReader.readFirstSheet(data)
             let csv = XlsxImportReader.gridToCSV(grid)
             return try importCSV(csv)
         }
-        #endif
         let text = FlexibleSpreadsheetImporter.decodeSpreadsheetText(data)
         return try importCSV(text)
     }

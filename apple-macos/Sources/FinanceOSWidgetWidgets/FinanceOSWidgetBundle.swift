@@ -103,10 +103,34 @@ struct FinanceOSWidgetProvider: TimelineProvider {
     private static func readSnapshot() throws -> FinanceOSWidgetSnapshot? {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         let url = base.appendingPathComponent("FinanceOS", isDirectory: true).appendingPathComponent("store.json")
-        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-        let content = try String(contentsOf: url, encoding: .utf8)
-        let data = try FinanceDataJsonCodec.decode(content)
-        return compute(data: data, now: Date())
+        if FileManager.default.fileExists(atPath: url.path) {
+            let content = try String(contentsOf: url, encoding: .utf8)
+            let data = try FinanceDataJsonCodec.decode(content)
+            return compute(data: data, now: Date())
+        }
+        // 沙盒/免费账号无共享容器时：回退读取 App 写入的具名剪贴板快照。
+        return bridgeSnapshot()
+    }
+
+    /// 解析 App 通过具名剪贴板写入的“本月概览”JSON。
+    private static func bridgeSnapshot() -> FinanceOSWidgetSnapshot? {
+        guard let json = SnapshotBridge.read(),
+              let data = json.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        let hasBudget = (object["hasBudget"] as? Bool) ?? false
+        let calendar = Calendar.current
+        let components = calendar.dateComponents([.year, .month], from: Date())
+        let month = BudgetMonth(year: components.year ?? 1970, month: components.month ?? 1)
+        let used = (object["usedMinor"] as? NSNumber)?.int64Value ?? 0
+        let dailyMinor = object["dailyMinor"] as? NSNumber
+        let remainingMinor = object["remainingMinor"] as? NSNumber
+        return FinanceOSWidgetSnapshot(
+            month: month,
+            usedMinor: used,
+            dailyMinor: hasBudget ? dailyMinor?.int64Value : nil,
+            remainingMinor: hasBudget ? remainingMinor?.int64Value : nil,
+            isOverBudget: (object["isOver"] as? Bool) ?? false
+        )
     }
 
     private static func compute(data: FinanceDataSnapshot, now: Date) -> FinanceOSWidgetSnapshot {

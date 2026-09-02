@@ -138,15 +138,35 @@ struct TransactionsView: View {
         let groups = groupedDays
         let summary = filteredSummary
         return List {
-            if groups.isEmpty {
+            let sortingByAmount = amountSort != .timeDesc
+            let monthAmountItems = sortingByAmount ? filtered.sorted(by: amountSortComparator) : []
+            let isEmpty = sortingByAmount ? monthAmountItems.isEmpty : groupedDays.isEmpty
+            if isEmpty {
                 EmptyStateView(
                     symbol: "tray",
                     title: filtersActive ? "没有符合条件的流水" : "本月还没有流水",
                     message: filtersActive ? "试试清除筛选条件" : "点击右上角“记一笔”添加收入或支出"
                 )
                 .listRowSeparator(.hidden)
+            } else if sortingByAmount {
+                // 金额排序：忽略天限制，整月按金额排列
+                ForEach(monthAmountItems) { transaction in
+                    TransactionRow(
+                        transaction: transaction,
+                        category: store.category(id: transaction.categoryId)
+                    )
+                    .contentShape(Rectangle())
+                    .onTapGesture(count: 2) {
+                        editingTransaction = transaction
+                    }
+                    .contextMenu {
+                        Button("编辑") { editingTransaction = transaction }
+                        Divider()
+                        Button("删除", role: .destructive) { pendingDelete = transaction }
+                    }
+                }
             } else {
-                ForEach(groups, id: \.day) { group in
+                ForEach(groupedDays, id: \.day) { group in
                     Section {
                         ForEach(group.items) { transaction in
                             TransactionRow(

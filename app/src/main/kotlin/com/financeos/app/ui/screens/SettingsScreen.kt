@@ -183,7 +183,7 @@ internal fun SettingsScreen(
                     headlineContent = { Text("关于 FinanceOS") },
                     supportingContent = {
                         Text(
-                            text = "版本 0.4.0 · isnaeguo",
+                            text = "版本 0.4.2 · isnaeguo",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     },
