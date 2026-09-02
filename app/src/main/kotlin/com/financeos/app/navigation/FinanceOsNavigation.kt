@@ -48,12 +48,14 @@ import com.financeos.app.FinanceOsApplication
 import com.financeos.app.ui.screens.AddTransactionRoute
 import com.financeos.app.ui.screens.BudgetRoute
 import com.financeos.app.ui.screens.HomeRoute
+import com.financeos.app.ui.screens.LanShareRoute
 import com.financeos.app.ui.screens.SettingsRoute
 import com.financeos.app.ui.screens.TransactionsRoute
 import com.financeos.app.ui.viewmodel.AddTransactionViewModel
 import com.financeos.app.ui.viewmodel.BudgetViewModel
 import com.financeos.app.ui.viewmodel.DashboardViewModel
 import com.financeos.app.ui.viewmodel.DataTransferViewModel
+import com.financeos.app.ui.viewmodel.LanShareViewModel
 import com.financeos.app.ui.viewmodel.TransactionsViewModel
 import kotlinx.coroutines.launch
 
@@ -62,6 +64,7 @@ private const val TRANSACTIONS_ROUTE = "transactions"
 private const val ADD_TRANSACTION_ROUTE = "add-transaction"
 private const val BUDGET_ROUTE = "budget"
 private const val SETTINGS_ROUTE = "settings"
+private const val LAN_SHARE_ROUTE = "lan-share"
 private const val TOP_LEVEL_FADE_DURATION_MILLIS = 140
 private const val SCREEN_ENTER_DURATION_MILLIS = 180
 private const val SCREEN_EXIT_DURATION_MILLIS = 120
@@ -288,7 +291,16 @@ fun FinanceOsNavigation() {
                     val dataTransferViewModel: DataTransferViewModel = viewModel(
                         factory = application.container.dataTransferViewModelFactory,
                     )
-                    SettingsRoute(viewModel = dataTransferViewModel)
+                    SettingsRoute(
+                        viewModel = dataTransferViewModel,
+                        onOpenLanShare = { navController.navigate(LAN_SHARE_ROUTE) },
+                    )
+                }
+                composable(LAN_SHARE_ROUTE) {
+                    val lanShareViewModel: LanShareViewModel = viewModel(
+                        factory = application.container.lanShareViewModelFactory,
+                    )
+                    LanShareRoute(viewModel = lanShareViewModel)
                 }
             }
         },
@@ -304,5 +316,6 @@ private fun titleForRoute(route: String): String = when (route) {
     ADD_TRANSACTION_ROUTE -> "记一笔"
     BUDGET_ROUTE -> "预算"
     SETTINGS_ROUTE -> "设置"
+    LAN_SHARE_ROUTE -> "局域网共享"
     else -> "FinanceOS"
 }

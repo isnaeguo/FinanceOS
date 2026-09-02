@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 主屏小组件配色：浅色卡片 + 深色文字，避免 RemoteViews 无法感知深浅模式。 -->
+    <color name="widget_card_background">#FFFFFFFF</color>
+    <color name="widget_label_text">#FF64748B</color>
+    <color name="widget_value_text">#FF111827</color>
+    <color name="widget_accent_text">#FF006B5F</color>
+    <color name="widget_danger_text">#FFB3261E</color>
+    <color name="widget_error_text">#FF6B7280</color>
+</resources>

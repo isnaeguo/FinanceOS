@@ -25,3 +25,15 @@ google-services.json
 
 # 已转换为 Android 启动图标资源的本地原图
 /1.png
+
+# Apple / macOS（apple-macos/）
+apple-macos/.build/
+apple-macos/dist/
+apple-macos/dist-debug/
+apple-macos/Resources/AppIcon.iconset/
+apple-macos/Resources/icon-master.png
+
+# Xcode / iOS
+DerivedData/
+ios/**/xcuserdata/
+ios/**/*.xcworkspace/xcuserdata/

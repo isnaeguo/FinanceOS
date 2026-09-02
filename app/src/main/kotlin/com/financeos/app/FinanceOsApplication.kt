@@ -5,13 +5,14 @@ import android.content.Context
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.financeos.app.data.FinanceDataBridge
 import com.financeos.app.ui.viewmodel.AddTransactionViewModel
 import com.financeos.app.ui.viewmodel.BudgetViewModel
 import com.financeos.app.ui.viewmodel.DashboardViewModel
 import com.financeos.app.ui.viewmodel.DataTransferViewModel
+import com.financeos.app.ui.viewmodel.LanShareViewModel
 import com.financeos.app.ui.viewmodel.TransactionsViewModel
 import com.financeos.app.data.AndroidDocumentStore
-import com.financeos.shared.data.local.createFinanceOsDatabase
 import com.financeos.shared.data.local.repository.LocalBudgetRepository
 import com.financeos.shared.data.local.repository.LocalCategoryRepository
 import com.financeos.shared.data.local.repository.LocalFinanceDataRepository
@@ -38,7 +39,8 @@ class FinanceOsApplication : Application() {
  * 当前依赖数量仍然很少，手动组装能让依赖方向清晰，也避免仅为少量对象引入 DI 框架。
  */
 internal class FinanceOsAppContainer(context: Context) {
-    private val database = createFinanceOsDatabase(context)
+    // 通过 FinanceDataBridge 取库，让小组件 / 局域网共享与 Compose 页面共享同一数据库实例。
+    private val database = FinanceDataBridge.get(context).database
     private val transactionRepository = LocalTransactionRepository(database.transactionDao())
     private val categoryRepository = LocalCategoryRepository(database.categoryDao())
     private val budgetRepository = LocalBudgetRepository(database.budgetDao())
@@ -58,8 +60,9 @@ internal class FinanceOsAppContainer(context: Context) {
     )
     private val calculateDailyExpenseUseCase = CalculateDailyExpenseUseCase()
     private val getExpenseTrendUseCase = GetExpenseTrendUseCase(transactionRepository)
+    private val localFinanceDataRepository = LocalFinanceDataRepository(database)
     private val financeDataTransferService = FinanceDataTransferService(
-        repository = LocalFinanceDataRepository(database),
+        repository = localFinanceDataRepository,
     )
     private val documentStore = AndroidDocumentStore(context)
 
@@ -112,8 +115,16 @@ internal class FinanceOsAppContainer(context: Context) {
         initializer {
             DataTransferViewModel(
                 service = financeDataTransferService,
+                repository = localFinanceDataRepository,
                 documentStore = documentStore,
+                loadCategories = { categoryRepository.getAll() },
             )
+        }
+    }
+
+    val lanShareViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
+        initializer {
+            LanShareViewModel(bridge = FinanceDataBridge.get(context))
         }
     }
 }

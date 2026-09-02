@@ -54,6 +54,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.financeos.app.ui.components.EmptyState
 import com.financeos.app.ui.components.LoadingState
+import com.financeos.app.ui.components.MonthSelector
 import com.financeos.app.ui.components.categoryIcon
 import com.financeos.app.ui.viewmodel.DashboardCategoryUiState
 import com.financeos.app.ui.viewmodel.DashboardTransactionUiState
@@ -83,10 +84,12 @@ internal fun HomeRoute(
         onOpenBudget = onOpenBudget,
         onOpenTransactions = onOpenTransactions,
         onTrendRangeSelected = viewModel::selectSpendingTrendRange,
+        onPreviousMonth = viewModel::previousMonth,
+        onNextMonth = viewModel::nextMonth,
     )
 }
 
-/** FinanceOS 日常首页，优先呈现当月支出、剩余预算与今日可用金额。 */
+/** FinanceOS 日常首页，默认展示当月支出、剩余预算与今日可用金额，也可回看更早月份。 */
 @Composable
 internal fun HomeScreen(
     uiState: DashboardUiState,
@@ -94,6 +97,8 @@ internal fun HomeScreen(
     onOpenBudget: () -> Unit,
     onOpenTransactions: () -> Unit,
     onTrendRangeSelected: (SpendingTrendRange) -> Unit,
+    onPreviousMonth: () -> Unit,
+    onNextMonth: () -> Unit,
 ) {
     when {
         uiState.isLoading -> {
@@ -131,10 +136,12 @@ internal fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 item {
-                    Text(
-                        text = uiState.monthLabel,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.titleMedium,
+                    MonthSelector(
+                        monthLabel = uiState.monthLabel,
+                        canShowPreviousMonth = uiState.canGoPrevious,
+                        canShowNextMonth = uiState.canGoNext,
+                        onPreviousMonth = onPreviousMonth,
+                        onNextMonth = onNextMonth,
                     )
                 }
                 item {
@@ -143,12 +150,14 @@ internal fun HomeScreen(
                 item {
                     DashboardMetrics(uiState)
                 }
-                item {
-                    Text(
-                        text = uiState.dailyAvailableExplanation,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+                if (uiState.isCurrentMonth) {
+                    item {
+                        Text(
+                            text = uiState.dailyAvailableExplanation,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                 }
                 item {
                     BudgetProgressCard(
@@ -372,11 +381,12 @@ private fun ExpenseLineChart(points: List<DashboardTrendPointUiState>) {
 @Composable
 private fun DashboardMetrics(uiState: DashboardUiState) {
     val stackMetrics = LocalDensity.current.fontScale >= 1.5f
+    val monthReference = monthReferenceLabel(uiState)
     val remainingBudgetCard: @Composable (Modifier) -> Unit = { modifier ->
         DashboardMetricCard(
             label = "剩余预算",
             value = uiState.remainingBudgetText,
-            supportingText = if (uiState.hasBudget) "本月剩余额度" else "尚未设置预算",
+            supportingText = if (uiState.hasBudget) "${monthReference}剩余额度" else "尚未设置预算",
             isWarning = uiState.isOverBudget,
             modifier = modifier,
         )
@@ -396,7 +406,7 @@ private fun DashboardMetrics(uiState: DashboardUiState) {
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
-        if (stackMetrics) {
+        if (uiState.isCurrentMonth && stackMetrics) {
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -405,13 +415,18 @@ private fun DashboardMetrics(uiState: DashboardUiState) {
                 HorizontalDivider()
                 dailyAvailableCard(Modifier.fillMaxWidth())
             }
-        } else {
+        } else if (uiState.isCurrentMonth) {
             Row(
                 modifier = Modifier.padding(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(24.dp),
             ) {
                 remainingBudgetCard(Modifier.weight(1f))
                 dailyAvailableCard(Modifier.weight(1f))
+            }
+        } else {
+            // 回看过去月份时不展示“今日建议预算”，只保留剩余预算，避免把过去的预算当成今天的可用额度。
+            Column(modifier = Modifier.padding(16.dp)) {
+                remainingBudgetCard(Modifier.fillMaxWidth())
             }
         }
     }
@@ -420,6 +435,7 @@ private fun DashboardMetrics(uiState: DashboardUiState) {
 @Composable
 private fun MonthlyOverviewCard(uiState: DashboardUiState) {
     val stackExpenses = LocalDensity.current.fontScale >= 1.5f
+    val monthReference = monthReferenceLabel(uiState)
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -433,24 +449,26 @@ private fun MonthlyOverviewCard(uiState: DashboardUiState) {
             if (stackExpenses) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     ExpenseMetric(
-                        label = "本月支出",
+                        label = "${monthReference}支出",
                         value = uiState.monthlyExpenseText,
                         isPrimary = true,
                     )
-                    ExpenseMetric(
-                        label = "本日支出",
-                        value = uiState.dailyExpenseText,
-                        isPrimary = false,
-                    )
+                    if (uiState.isCurrentMonth) {
+                        ExpenseMetric(
+                            label = "本日支出",
+                            value = uiState.dailyExpenseText,
+                            isPrimary = false,
+                        )
+                    }
                 }
-            } else {
+            } else if (uiState.isCurrentMonth) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(20.dp),
                     verticalAlignment = Alignment.Bottom,
                 ) {
                     ExpenseMetric(
-                        label = "本月支出",
+                        label = "${monthReference}支出",
                         value = uiState.monthlyExpenseText,
                         isPrimary = true,
                         modifier = Modifier.weight(1f),
@@ -463,6 +481,12 @@ private fun MonthlyOverviewCard(uiState: DashboardUiState) {
                         alignment = Alignment.End,
                     )
                 }
+            } else {
+                ExpenseMetric(
+                    label = "${monthReference}支出",
+                    value = uiState.monthlyExpenseText,
+                    isPrimary = true,
+                )
             }
             HorizontalDivider()
             Row(
@@ -471,7 +495,7 @@ private fun MonthlyOverviewCard(uiState: DashboardUiState) {
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
-                    text = "本月收入",
+                    text = "${monthReference}收入",
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f),
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -812,6 +836,10 @@ private fun RecentTransactionRow(transaction: DashboardTransactionUiState) {
         },
     )
 }
+
+/** 当前展示月份的口语称谓：本月用“本月”，回看历史月用具体的“N月”短格式。 */
+private fun monthReferenceLabel(uiState: DashboardUiState): String =
+    if (uiState.isCurrentMonth) "本月" else uiState.monthLabel.substringAfter('年', uiState.monthLabel)
 
 private const val AMOUNT_CROSSFADE_DURATION_MILLIS = 180
 private const val CHART_ANIMATION_DURATION_MILLIS = 220

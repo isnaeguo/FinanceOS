@@ -39,6 +39,8 @@ data class TransactionItemUiState(
     val typeLabel: String,
     val isExpense: Boolean,
     val type: TransactionType,
+    /** 排序使用的原始最小货币单位金额，展示仍统一走 [amountText]。 */
+    val amountMinor: Long = 0L,
 )
 
 /** 账户管理尚未进入 v0.2，筛选直接表达现有流水中的 accountId。 */
@@ -53,6 +55,13 @@ data class TransactionFilterOption(
     val label: String,
 )
 
+/** 流水列表的排序方式，默认按时间倒序；金额排序只在当前月的筛选结果内生效。 */
+enum class AmountSort(val label: String) {
+    TIME_NEWEST("时间最新"),
+    AMOUNT_LARGEST("金额最大"),
+    AMOUNT_SMALLEST("金额最小"),
+}
+
 /** 流水列表页面状态。 */
 data class TransactionsUiState(
     val monthLabel: String,
@@ -63,11 +72,14 @@ data class TransactionsUiState(
     val selectedType: TransactionType? = null,
     val selectedCategoryId: String? = null,
     val selectedAccount: AccountFilter = AccountFilter.All,
+    val amountSort: AmountSort = AmountSort.TIME_NEWEST,
     val categoryOptions: List<TransactionFilterOption> = emptyList(),
     val accountOptions: List<TransactionFilterOption> = emptyList(),
     val hasActiveFilters: Boolean = false,
     val pendingDeleteItem: TransactionItemUiState? = null,
     val isDeleting: Boolean = false,
+    val pendingCategoryItem: TransactionItemUiState? = null,
+    val isUpdatingCategory: Boolean = false,
     val errorMessage: String? = null,
 )
 
@@ -101,6 +113,7 @@ class TransactionsViewModel(
     private var observationJob: Job? = null
     private var allItems: List<TransactionItemUiState> = emptyList()
     private var accountOptions: List<TransactionFilterOption> = emptyList()
+    private var transactionsById: Map<String, Transaction> = emptyMap()
 
     init {
         refresh()
@@ -117,6 +130,7 @@ class TransactionsViewModel(
                     getMonthlyTransactions.observe(period),
                     categoryRepository.observeAll(),
                 ) { transactions, categories ->
+                    transactionsById = transactions.associateBy(Transaction::id)
                     val categoriesById = categories.associateBy(Category::id)
                     MappedTransactions(
                         items = transactions.map { transaction ->
@@ -181,6 +195,12 @@ class TransactionsViewModel(
         applyFilters()
     }
 
+    fun selectAmountSort(sort: AmountSort) {
+        if (_uiState.value.amountSort == sort) return
+        _uiState.update { it.copy(amountSort = sort) }
+        applyFilters()
+    }
+
     fun clearFilters() {
         _uiState.update {
             it.copy(
@@ -196,6 +216,44 @@ class TransactionsViewModel(
     fun requestDelete(transactionId: String) {
         val item = _uiState.value.items.firstOrNull { it.id == transactionId } ?: return
         _uiState.update { it.copy(pendingDeleteItem = item) }
+    }
+
+
+    fun requestRecategorize(transactionId: String) {
+        if (_uiState.value.isUpdatingCategory) return
+        val item = _uiState.value.items.firstOrNull { it.id == transactionId } ?: return
+        _uiState.update { it.copy(pendingCategoryItem = item) }
+    }
+
+    fun dismissRecategorize() {
+        if (!_uiState.value.isUpdatingCategory) {
+            _uiState.update { it.copy(pendingCategoryItem = null) }
+        }
+    }
+
+    /** 把指定流水改到新分类（保持其余字段不变），供导入账单后手动归类。 */
+    fun applyRecategorize(categoryId: String) {
+        val item = _uiState.value.pendingCategoryItem ?: return
+        if (_uiState.value.isUpdatingCategory) return
+        val transaction = transactionsById[item.id] ?: run {
+            _uiState.update { it.copy(pendingCategoryItem = null) }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(isUpdatingCategory = true) }
+            try {
+                val updated = transaction.copy(categoryId = categoryId)
+                transactionRepository.delete(item.id)
+                transactionRepository.add(updated)
+                _uiState.update { it.copy(pendingCategoryItem = null, isUpdatingCategory = false) }
+                _events.send(TransactionsEvent.ShowMessage("已把该笔改到新分类"))
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _uiState.update { it.copy(isUpdatingCategory = false) }
+                _events.send(TransactionsEvent.ShowMessage("分类更新失败，请稍后重试"))
+            }
+        }
     }
 
     fun dismissDelete() {
@@ -243,7 +301,7 @@ class TransactionsViewModel(
         refresh()
     }
 
-    /** 在已映射的月度列表上组合条件，避免输入关键词时反复访问数据库或格式化日期。 */
+    /** 在已映射的月度列表上先组合条件、再按选中排序输出，避免输入关键词时反复访问数据库或格式化日期。 */
     private fun applyFilters(isLoading: Boolean = _uiState.value.isLoading) {
         val state = _uiState.value
         val query = state.searchQuery.trim()
@@ -254,17 +312,18 @@ class TransactionsViewModel(
             selectedCategoryId = state.selectedCategoryId,
             selectedAccount = state.selectedAccount,
         )
+        val sortedItems = sortTransactionItems(filteredItems, state.amountSort)
         _uiState.update { current ->
             current.copy(
                 isLoading = isLoading,
-                items = filteredItems,
+                items = sortedItems,
                 accountOptions = accountOptions,
                 hasActiveFilters = query.isNotEmpty() ||
                     current.selectedType != null ||
                     current.selectedCategoryId != null ||
                     current.selectedAccount != AccountFilter.All,
                 pendingDeleteItem = current.pendingDeleteItem?.takeIf { pending ->
-                    filteredItems.any { it.id == pending.id }
+                    sortedItems.any { it.id == pending.id }
                 },
                 errorMessage = null,
             )
@@ -286,6 +345,7 @@ class TransactionsViewModel(
             typeLabel = if (type == TransactionType.EXPENSE) "支出" else "收入",
             isExpense = type == TransactionType.EXPENSE,
             type = type,
+            amountMinor = amount,
         )
     }
 
@@ -341,4 +401,21 @@ internal fun filterTransactionItems(
                 is AccountFilter.Specific -> item.accountId == selectedAccount.accountId
             }
     }
+}
+
+/**
+ * 对已过滤的月度流水按金额排序。
+ *
+ * 输入列表来自 Room 的时间倒序查询（时间相同再按 id 倒序），Kotlin 稳定排序会让金额相同的
+ * 流水保持原有时间次序，因此金额排序也不会打乱“同一天内时间最新在前”的相对关系。
+ */
+internal fun sortTransactionItems(
+    items: List<TransactionItemUiState>,
+    amountSort: AmountSort,
+): List<TransactionItemUiState> = when (amountSort) {
+    AmountSort.TIME_NEWEST -> items
+    AmountSort.AMOUNT_LARGEST ->
+        items.sortedWith(compareByDescending<TransactionItemUiState> { it.amountMinor })
+    AmountSort.AMOUNT_SMALLEST ->
+        items.sortedWith(compareBy<TransactionItemUiState> { it.amountMinor })
 }

@@ -76,16 +76,11 @@ data class BudgetEditorUiState(
             !isSaving
 }
 
-/** 预算页只允许在当前月和紧邻的下个月之间切换。 */
-enum class BudgetMonthSelection(val label: String) {
-    CURRENT("本月"),
-    NEXT("下月"),
-}
-
-/** 当前选定月份的预算页面状态。 */
+/** 当前选定月份的预算页面状态；允许回看历史月份，未来最远到“当前月+1”。 */
 data class BudgetUiState(
     val monthLabel: String,
-    val monthSelection: BudgetMonthSelection = BudgetMonthSelection.CURRENT,
+    val canGoPrevious: Boolean = true,
+    val canGoNext: Boolean = false,
     val isLoading: Boolean = true,
     val total: BudgetUsageUiState? = null,
     val categoryBudgets: List<CategoryBudgetUiState> = emptyList(),
@@ -99,7 +94,7 @@ sealed interface BudgetEvent {
     data class ShowMessage(val message: String) : BudgetEvent
 }
 
-/** 管理本月或下月预算结果和编辑状态，所有预算指标均来自 [GetBudgetStatusUseCase]。 */
+/** 管理选中月份的预算结果和编辑状态，所有预算指标均来自 [GetBudgetStatusUseCase]。 */
 class BudgetViewModel(
     private val getBudgetStatus: GetBudgetStatusUseCase,
     private val getMonthlyTransactions: GetMonthlyTransactionsUseCase,
@@ -109,10 +104,17 @@ class BudgetViewModel(
     currentMonth: YearMonth? = null,
 ) : ViewModel() {
     private val baseMonth = currentMonth ?: YearMonth.now(zoneId)
-    private var monthSelection = BudgetMonthSelection.CURRENT
-    private var selectedMonth = monthSelection.resolve(baseMonth)
+    /** 未来最多允许提前创建“当前月+1”的预算，不提前管理更远的月份。 */
+    private val latestAllowedMonth = baseMonth.plusMonths(1)
+    /** 历史回溯的下界，避免空数据页面被无限回翻。 */
+    private val earliestAllowedMonth = YearMonth.of(EARLIEST_BUDGET_YEAR, 1)
+    private var selectedMonth = baseMonth
     private val _uiState = MutableStateFlow(
-        BudgetUiState(monthLabel = monthFormatter.format(selectedMonth)),
+        BudgetUiState(
+            monthLabel = monthFormatter.format(selectedMonth),
+            canGoPrevious = selectedMonth > earliestAllowedMonth,
+            canGoNext = selectedMonth < latestAllowedMonth,
+        ),
     )
     val uiState: StateFlow<BudgetUiState> = _uiState.asStateFlow()
     private val _events = Channel<BudgetEvent>(capacity = Channel.BUFFERED)
@@ -125,15 +127,23 @@ class BudgetViewModel(
         refresh()
     }
 
-    fun selectMonth(selection: BudgetMonthSelection) {
-        if (selection == monthSelection) return
-        monthSelection = selection
-        selectedMonth = selection.resolve(baseMonth)
+    fun showPreviousMonth() {
+        previousBudgetMonthOrNull(selectedMonth, earliestAllowedMonth)?.let(::selectMonth)
+    }
+
+    fun showNextMonth() {
+        nextBudgetMonthOrNull(selectedMonth, latestAllowedMonth)?.let(::selectMonth)
+    }
+
+    private fun selectMonth(month: YearMonth) {
+        if (month == selectedMonth) return
+        selectedMonth = month
         expenseCategories = emptyList()
         _uiState.update {
             BudgetUiState(
                 monthLabel = monthFormatter.format(selectedMonth),
-                monthSelection = selection,
+                canGoPrevious = selectedMonth > earliestAllowedMonth,
+                canGoNext = selectedMonth < latestAllowedMonth,
             )
         }
         refresh()
@@ -200,9 +210,9 @@ class BudgetViewModel(
             it.copy(
                 editor = BudgetEditorUiState(
                     title = if (total.hasBudget) {
-                        "修改${monthSelection.label}总预算"
+                        "修改${budgetPeriodLabel()}总预算"
                     } else {
-                        "设置${monthSelection.label}总预算"
+                        "设置${budgetPeriodLabel()}总预算"
                     },
                     isCategoryBudget = false,
                     isNewCategoryBudget = false,
@@ -224,7 +234,7 @@ class BudgetViewModel(
         _uiState.update {
             it.copy(
                 editor = BudgetEditorUiState(
-                    title = "新增${monthSelection.label}分类预算",
+                    title = "新增${budgetPeriodLabel()}分类预算",
                     isCategoryBudget = true,
                     isNewCategoryBudget = true,
                     selectedCategoryId = options.first().id,
@@ -242,7 +252,7 @@ class BudgetViewModel(
         _uiState.update {
             it.copy(
                 editor = BudgetEditorUiState(
-                    title = "修改${monthSelection.label}${categoryBudget.categoryName}预算",
+                    title = "修改${budgetPeriodLabel()}${categoryBudget.categoryName}预算",
                     isCategoryBudget = true,
                     isNewCategoryBudget = false,
                     selectedCategoryId = categoryId,
@@ -306,9 +316,9 @@ class BudgetViewModel(
         }
 
         updateEditor { it.copy(isSaving = true, amountError = null, saveError = null) }
-        // 保存前固定目标月份，保证异步写入不会因页面状态变化而落到其他月份。
+        // 保存前固定目标月份与文案，保证异步写入不会因页面状态变化而落到其他月份。
         val targetMonth = selectedMonth.toMonthPeriod(zoneId).month
-        val targetMonthLabel = monthSelection.label
+        val targetMonthLabel = budgetPeriodLabel()
         viewModelScope.launch {
             try {
                 val existing = budgetRepository.get(targetMonth, categoryId)
@@ -338,6 +348,13 @@ class BudgetViewModel(
             val editor = current.editor ?: return@update current
             current.copy(editor = transform(editor))
         }
+    }
+
+    /** 编辑标题、反馈等文案使用的月份称谓：本月/下月用口语，其余显示完整年月避免歧义。 */
+    private fun budgetPeriodLabel(): String = when (selectedMonth) {
+        baseMonth -> "本月"
+        latestAllowedMonth -> "下月"
+        else -> monthFormatter.format(selectedMonth)
     }
 
     private fun BudgetUsage.toUiState(): BudgetUsageUiState {
@@ -382,11 +399,20 @@ class BudgetViewModel(
     }
 }
 
-/** 把受限的页面选择映射为唯一允许管理的预算月份。 */
-internal fun BudgetMonthSelection.resolve(baseMonth: YearMonth): YearMonth = when (this) {
-    BudgetMonthSelection.CURRENT -> baseMonth
-    BudgetMonthSelection.NEXT -> baseMonth.plusMonths(1)
-}
+/** 预算可回溯的最早年份下限（2000 年 1 月），历史月份再往前不再提供入口。 */
+internal const val EARLIEST_BUDGET_YEAR = 2000
+
+/** 返回更早一个月的预算月份；已到最远历史月时返回 null，调用方应禁用左箭头。 */
+internal fun previousBudgetMonthOrNull(
+    month: YearMonth,
+    earliest: YearMonth,
+): YearMonth? = if (month <= earliest) null else month.minusMonths(1)
+
+/** 返回更近一个月的预算月份；达到 latest（默认当前月+1）后不再前进。 */
+internal fun nextBudgetMonthOrNull(
+    month: YearMonth,
+    latest: YearMonth,
+): YearMonth? = if (month >= latest) null else minOf(month.plusMonths(1), latest)
 
 private data class BudgetSnapshot(
     val expenseCategories: List<Category>,

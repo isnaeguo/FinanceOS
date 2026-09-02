@@ -94,6 +94,12 @@ data class DashboardUiState(
     val spendingTrendRange: SpendingTrendRange = SpendingTrendRange.DAYS_7,
     val recentTransactions: List<DashboardTransactionUiState> = emptyList(),
     val errorMessage: String? = null,
+    /** 是否还可以回到更早的月份；首页切换历史月份没有下界限制。 */
+    val canGoPrevious: Boolean = true,
+    /** 是否可以切到更新的月份；仅在选中的月份早于当前月时为 true。 */
+    val canGoNext: Boolean = false,
+    /** 当前展示的月份是否就是设备当前月；回看过去月份时需隐藏“今日可用”类信息。 */
+    val isCurrentMonth: Boolean = true,
 )
 
 /** 调用现有 UseCase 聚合 Dashboard；Composable 不参与任何财务计算。 */
@@ -110,8 +116,10 @@ class DashboardViewModel(
     today: LocalDate? = null,
 ) : ViewModel() {
     private val fixedDate = today
+    /** 首页当前展示的月份，默认本月；只允许在当前月及更早的月份之间切换。 */
+    private var selectedMonth: YearMonth = YearMonth.from(currentDate())
     private val _uiState = MutableStateFlow(
-        DashboardUiState(monthLabel = monthFormatter.format(YearMonth.from(currentDate()))),
+        DashboardUiState(monthLabel = monthFormatter.format(selectedMonth)),
     )
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
 
@@ -124,11 +132,11 @@ class DashboardViewModel(
         refresh()
     }
 
-    /** 重新订阅设备当前月份，并从响应式快照直接计算页面状态。 */
+    /** 重新订阅当前选中的月份（默认本月，也可回看更早月份），并从响应式快照直接计算页面状态。 */
     fun refresh() {
         val currentDate = currentDate()
         val currentMonth = YearMonth.from(currentDate)
-        val period = currentMonth.toMonthPeriod(zoneId)
+        val period = selectedMonth.toMonthPeriod(zoneId)
         val monthTrendPeriods = monthTrendPeriods(currentMonth)
         val dailyTrendPeriods = dailyTrendPeriods(currentDate)
         observedDate = currentDate
@@ -150,7 +158,7 @@ class DashboardViewModel(
                         categories = categories,
                         trendGroups = trendGroups,
                         currentDate = currentDate,
-                        currentMonth = currentMonth,
+                        selectedMonth = selectedMonth,
                         period = period,
                     )
                 }
@@ -183,6 +191,31 @@ class DashboardViewModel(
         if (observedDate != currentDate()) refresh()
     }
 
+    /** 回看更早一个月的首页；历史月份浏览没有下界限制。 */
+    fun previousMonth() {
+        selectMonthForDashboard(selectedMonth.minusMonths(1))
+    }
+
+    /** 切到更新的月份；不能进入当前月之后的未来月份。 */
+    fun nextMonth() {
+        if (selectedMonth < YearMonth.from(currentDate())) {
+            selectMonthForDashboard(selectedMonth.plusMonths(1))
+        }
+    }
+
+    private fun selectMonthForDashboard(month: YearMonth) {
+        if (month == selectedMonth) return
+        selectedMonth = month
+        _uiState.update {
+            it.copy(
+                monthLabel = monthFormatter.format(month),
+                canGoPrevious = true,
+                canGoNext = month < YearMonth.from(currentDate()),
+            )
+        }
+        refresh()
+    }
+
     fun selectSpendingTrendRange(range: SpendingTrendRange) {
         _uiState.update {
             it.copy(
@@ -201,29 +234,40 @@ class DashboardViewModel(
         categories: List<Category>,
         trendGroups: List<List<ExpenseTrendPoint>>,
         currentDate: LocalDate,
-        currentMonth: YearMonth,
+        selectedMonth: YearMonth,
         period: MonthPeriod,
     ): DashboardSnapshot {
         val summary = getMonthlySummary.calculate(transactions)
         val budgetStatus = getBudgetStatus.calculate(summary, budgets)
+        val currentMonth = YearMonth.from(currentDate)
+        // “今日可用预算/本日支出”依赖当天的实时剩余，只在查看当前月时有意义。
+        val isCurrentMonth = selectedMonth == currentMonth
         val startOfToday = Instant.fromEpochMilliseconds(
             currentDate.atStartOfDay(zoneId).toInstant().toEpochMilli(),
         )
         val startOfTomorrow = Instant.fromEpochMilliseconds(
             currentDate.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli(),
         )
-        val dailyAvailable = calculateDailyAvailableBudget.calculate(
-            period = period,
-            currentDayOfMonth = currentDate.dayOfMonth,
-            startOfToday = startOfToday,
-            totalBudget = budgets.firstOrNull { it.categoryId == null },
-            transactions = transactions,
-        )
-        val dailyExpense = calculateDailyExpense(
-            transactions = transactions,
-            startOfDayInclusive = startOfToday,
-            startOfNextDayExclusive = startOfTomorrow,
-        )
+        val dailyAvailable = if (isCurrentMonth) {
+            calculateDailyAvailableBudget.calculate(
+                period = period,
+                currentDayOfMonth = currentDate.dayOfMonth,
+                startOfToday = startOfToday,
+                totalBudget = budgets.firstOrNull { it.categoryId == null },
+                transactions = transactions,
+            )
+        } else {
+            null
+        }
+        val dailyExpense = if (isCurrentMonth) {
+            calculateDailyExpense(
+                transactions = transactions,
+                startOfDayInclusive = startOfToday,
+                startOfNextDayExclusive = startOfTomorrow,
+            )
+        } else {
+            0L
+        }
         val monthlyTrend = trendGroups.getOrElse(0) { emptyList() }.toDashboardTrend()
         val thirtyDayTrend = trendGroups.getOrElse(1) { emptyList() }.toDashboardTrend()
         val sevenDayTrend = thirtyDayTrend.takeLast(SpendingTrendRange.DAYS_7.days)
@@ -231,7 +275,7 @@ class DashboardViewModel(
         // 这里仅把多个 UseCase 结果组织成页面层级，不重新定义预算或收支业务规则。
         return DashboardSnapshot(
             uiState = buildDashboardUiState(
-                monthLabel = monthFormatter.format(currentMonth),
+                monthLabel = monthFormatter.format(selectedMonth),
                 summary = summary,
                 dailyExpense = dailyExpense,
                 budgetStatus = budgetStatus,
@@ -241,6 +285,9 @@ class DashboardViewModel(
                 zoneId = zoneId,
                 monthlyExpenseTrend = monthlyTrend,
                 dailyExpenseTrend = sevenDayTrend,
+                canGoPrevious = true,
+                canGoNext = selectedMonth < currentMonth,
+                isCurrentMonth = isCurrentMonth,
             ),
             sevenDayTrend = sevenDayTrend,
             thirtyDayTrend = thirtyDayTrend,
@@ -290,6 +337,9 @@ internal fun buildDashboardUiState(
     monthlyExpenseTrend: List<DashboardTrendPointUiState> = emptyList(),
     dailyExpenseTrend: List<DashboardTrendPointUiState> = emptyList(),
     spendingTrendRange: SpendingTrendRange = SpendingTrendRange.DAYS_7,
+    canGoPrevious: Boolean = true,
+    canGoNext: Boolean = false,
+    isCurrentMonth: Boolean = true,
 ): DashboardUiState {
     val totalBudget = budgetStatus.total
     val remaining = totalBudget.amountRemaining
@@ -367,6 +417,9 @@ internal fun buildDashboardUiState(
         dailyExpenseTrend = dailyExpenseTrend,
         spendingTrendRange = spendingTrendRange,
         recentTransactions = recentTransactions,
+        canGoPrevious = canGoPrevious,
+        canGoNext = canGoNext,
+        isCurrentMonth = isCurrentMonth,
     )
 }
 

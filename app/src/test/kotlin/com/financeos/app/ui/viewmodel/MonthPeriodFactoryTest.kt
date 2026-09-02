@@ -31,15 +31,17 @@ class MonthPeriodFactoryTest {
     }
 
     @Test
-    fun budgetMonthSelectionOnlyResolvesCurrentAndNextMonth() {
-        val december = YearMonth.of(2026, 12)
+    fun budgetMonthNavigationReachesAnyPastMonthButStopsAtNextMonth() {
+        val current = YearMonth.of(2026, 8)
+        val latest = current.plusMonths(1)
+        val earliest = YearMonth.of(2000, 1)
 
-        assertEquals(
-            listOf(BudgetMonthSelection.CURRENT, BudgetMonthSelection.NEXT),
-            BudgetMonthSelection.entries,
-        )
-        assertEquals(december, BudgetMonthSelection.CURRENT.resolve(december))
-        assertEquals(YearMonth.of(2027, 1), BudgetMonthSelection.NEXT.resolve(december))
+        assertEquals(YearMonth.of(2026, 7), previousBudgetMonthOrNull(current, earliest))
+        assertEquals(YearMonth.of(2020, 1), previousBudgetMonthOrNull(YearMonth.of(2020, 2), earliest))
+        // 到达最远回溯下界后不再前进，同时未来不会越过“当前月+1”。
+        assertNull(previousBudgetMonthOrNull(earliest, earliest))
+        assertEquals(latest, nextBudgetMonthOrNull(current, latest))
+        assertNull(nextBudgetMonthOrNull(latest, latest))
     }
 
     @Test

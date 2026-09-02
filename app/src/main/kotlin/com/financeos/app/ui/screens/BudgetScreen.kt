@@ -25,7 +25,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -53,10 +52,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.financeos.app.ui.components.EmptyState
 import com.financeos.app.ui.components.LoadingState
+import com.financeos.app.ui.components.MonthSelector
 import com.financeos.app.ui.components.categoryIcon
 import com.financeos.app.ui.viewmodel.BudgetEditorUiState
 import com.financeos.app.ui.viewmodel.BudgetEvent
-import com.financeos.app.ui.viewmodel.BudgetMonthSelection
 import com.financeos.app.ui.viewmodel.BudgetUiState
 import com.financeos.app.ui.viewmodel.BudgetUsageUiState
 import com.financeos.app.ui.viewmodel.BudgetViewModel
@@ -78,7 +77,8 @@ internal fun BudgetRoute(viewModel: BudgetViewModel) {
         BudgetScreen(
             uiState = uiState,
             onRetry = viewModel::refresh,
-            onMonthSelected = viewModel::selectMonth,
+            onPreviousMonth = viewModel::showPreviousMonth,
+            onNextMonth = viewModel::showNextMonth,
             onEditTotal = viewModel::openTotalBudgetEditor,
             onAddCategory = viewModel::openNewCategoryBudgetEditor,
             onEditCategory = viewModel::openCategoryBudgetEditor,
@@ -94,12 +94,13 @@ internal fun BudgetRoute(viewModel: BudgetViewModel) {
     }
 }
 
-/** 本月与下月的总预算和分类预算页面，指标只展示 ViewModel 已准备好的 UseCase 结果。 */
+/** 所选月份（默认本月，可回溯历史月、未来最多到当前月+1）的总预算和分类预算页面。 */
 @Composable
 internal fun BudgetScreen(
     uiState: BudgetUiState,
     onRetry: () -> Unit,
-    onMonthSelected: (BudgetMonthSelection) -> Unit,
+    onPreviousMonth: () -> Unit,
+    onNextMonth: () -> Unit,
     onEditTotal: () -> Unit,
     onAddCategory: () -> Unit,
     onEditCategory: (String) -> Unit,
@@ -144,22 +145,13 @@ internal fun BudgetScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 item {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            BudgetMonthSelection.entries.forEach { selection ->
-                                FilterChip(
-                                    selected = uiState.monthSelection == selection,
-                                    onClick = { onMonthSelected(selection) },
-                                    label = { Text(selection.label) },
-                                )
-                            }
-                        }
-                        Text(
-                            text = uiState.monthLabel,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                    }
+                    MonthSelector(
+                        monthLabel = uiState.monthLabel,
+                        canShowPreviousMonth = uiState.canGoPrevious,
+                        canShowNextMonth = uiState.canGoNext,
+                        onPreviousMonth = onPreviousMonth,
+                        onNextMonth = onNextMonth,
+                    )
                 }
 
                 item {
@@ -170,13 +162,13 @@ internal fun BudgetScreen(
                     item {
                         if (total.hasBudget) {
                             BudgetUsageCard(
-                                title = "${uiState.monthSelection.label}总预算",
+                                title = "${uiState.monthLabel}总预算",
                                 usage = total,
                                 onEdit = onEditTotal,
                             )
                         } else {
                             MissingTotalBudgetCard(
-                                periodLabel = uiState.monthSelection.label,
+                                periodLabel = uiState.monthLabel,
                                 amountUsedText = total.amountUsedText,
                                 onSetBudget = onEditTotal,
                             )

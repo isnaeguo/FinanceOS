@@ -15,9 +15,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
@@ -47,11 +46,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.financeos.app.ui.components.MonthSelector
 import com.financeos.app.ui.components.categoryIcon
 import com.financeos.app.ui.components.EmptyState
 import com.financeos.app.ui.components.LoadingState
-import com.financeos.app.ui.viewmodel.TransactionItemUiState
 import com.financeos.app.ui.viewmodel.AccountFilter
+import com.financeos.app.ui.viewmodel.AmountSort
+import com.financeos.app.ui.viewmodel.TransactionItemUiState
 import com.financeos.app.ui.viewmodel.TransactionFilterOption
 import com.financeos.app.ui.viewmodel.TransactionsEvent
 import com.financeos.app.ui.viewmodel.TransactionsUiState
@@ -86,10 +87,14 @@ internal fun TransactionsRoute(
         onTypeSelected = viewModel::selectType,
         onCategorySelected = viewModel::selectCategory,
         onAccountSelected = viewModel::selectAccount,
+        onSortSelected = viewModel::selectAmountSort,
         onClearFilters = viewModel::clearFilters,
         onDeleteRequested = viewModel::requestDelete,
         onDeleteConfirmed = viewModel::confirmDelete,
         onDeleteDismissed = viewModel::dismissDelete,
+        onRecategorizeRequested = viewModel::requestRecategorize,
+        onRecategorizeConfirmed = viewModel::applyRecategorize,
+        onRecategorizeDismissed = viewModel::dismissRecategorize,
     )
 }
 
@@ -106,10 +111,14 @@ internal fun TransactionsScreen(
     onTypeSelected: (TransactionType?) -> Unit,
     onCategorySelected: (String?) -> Unit,
     onAccountSelected: (AccountFilter) -> Unit,
+    onSortSelected: (AmountSort) -> Unit,
     onClearFilters: () -> Unit,
     onDeleteRequested: (String) -> Unit,
     onDeleteConfirmed: () -> Unit,
     onDeleteDismissed: () -> Unit,
+    onRecategorizeRequested: (String) -> Unit,
+    onRecategorizeConfirmed: (String) -> Unit,
+    onRecategorizeDismissed: () -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -125,6 +134,7 @@ internal fun TransactionsScreen(
                 onTypeSelected = onTypeSelected,
                 onCategorySelected = onCategorySelected,
                 onAccountSelected = onAccountSelected,
+                onSortSelected = onSortSelected,
                 onClearFilters = onClearFilters,
             )
             HorizontalDivider()
@@ -172,6 +182,7 @@ internal fun TransactionsScreen(
                         TransactionList(
                             items = uiState.items,
                             onDeleteRequested = onDeleteRequested,
+                            onRecategorizeRequested = onRecategorizeRequested,
                         )
                     }
                 }
@@ -192,6 +203,52 @@ internal fun TransactionsScreen(
             onDismiss = onDeleteDismissed,
         )
     }
+
+    uiState.pendingCategoryItem?.let { item ->
+        RecategorizeDialog(
+            item = item,
+            options = uiState.categoryOptions,
+            isUpdating = uiState.isUpdatingCategory,
+            onSelect = { categoryId -> onRecategorizeConfirmed(categoryId) },
+            onDismiss = onRecategorizeDismissed,
+        )
+    }
+}
+
+@Composable
+private fun RecategorizeDialog(
+    item: TransactionItemUiState,
+    options: List<TransactionFilterOption>,
+    isUpdating: Boolean,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = { if (!isUpdating) onDismiss() },
+        title = { Text("选择新分类") },
+        text = {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                items(options.size) { index ->
+                    val option = options[index]
+                    TextButton(
+                        onClick = { onSelect(option.id) },
+                        enabled = !isUpdating,
+                    ) {
+                        Text(option.label)
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isUpdating) {
+                Text("取消")
+            }
+        },
+    )
 }
 
 @Composable
@@ -201,6 +258,7 @@ private fun TransactionFilters(
     onTypeSelected: (TransactionType?) -> Unit,
     onCategorySelected: (String?) -> Unit,
     onAccountSelected: (AccountFilter) -> Unit,
+    onSortSelected: (AmountSort) -> Unit,
     onClearFilters: () -> Unit,
 ) {
     Column(
@@ -283,6 +341,12 @@ private fun TransactionFilters(
                     onSelected = { onAccountSelected(AccountFilter.Specific(it.id)) },
                 )
             }
+            item {
+                AmountSortMenu(
+                    selected = uiState.amountSort,
+                    onSelected = onSortSelected,
+                )
+            }
             if (uiState.hasActiveFilters) {
                 item {
                     TextButton(onClick = onClearFilters) {
@@ -346,28 +410,30 @@ private fun FilterOptionMenu(
 }
 
 @Composable
-private fun MonthSelector(
-    monthLabel: String,
-    canShowNextMonth: Boolean,
-    onPreviousMonth: () -> Unit,
-    onNextMonth: () -> Unit,
+private fun AmountSortMenu(
+    selected: AmountSort,
+    onSelected: (AmountSort) -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        IconButton(onClick = onPreviousMonth) {
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "上个月")
-        }
-        Text(text = monthLabel, style = MaterialTheme.typography.titleMedium)
-        IconButton(
-            onClick = onNextMonth,
-            enabled = canShowNextMonth,
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        FilterChip(
+            selected = false,
+            onClick = { expanded = true },
+            label = { Text("排序：${selected.label}") },
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
         ) {
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "下个月")
+            AmountSort.entries.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option.label) },
+                    onClick = {
+                        expanded = false
+                        onSelected(option)
+                    },
+                )
+            }
         }
     }
 }
@@ -376,6 +442,7 @@ private fun MonthSelector(
 private fun TransactionList(
     items: List<TransactionItemUiState>,
     onDeleteRequested: (String) -> Unit,
+    onRecategorizeRequested: (String) -> Unit,
 ) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         items(
@@ -427,6 +494,13 @@ private fun TransactionList(
                                 fontFeatureSettings = "tnum",
                             ),
                         )
+                        IconButton(onClick = { onRecategorizeRequested(item.id) }) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "改${item.categoryName}的分类",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                         IconButton(onClick = { onDeleteRequested(item.id) }) {
                             Icon(
                                 imageVector = Icons.Default.Delete,

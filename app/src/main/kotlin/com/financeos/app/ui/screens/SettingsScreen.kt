@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -44,7 +45,10 @@ import java.time.format.DateTimeFormatter
 
 /** 连接系统文件选择器与数据导入导出状态。 */
 @Composable
-internal fun SettingsRoute(viewModel: DataTransferViewModel) {
+internal fun SettingsRoute(
+    viewModel: DataTransferViewModel,
+    onOpenLanShare: () -> Unit,
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val exportJsonLauncher = rememberLauncherForActivityResult(
@@ -56,12 +60,9 @@ internal fun SettingsRoute(viewModel: DataTransferViewModel) {
     val backupLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument(JSON_MIME_TYPE),
     ) { uri -> uri?.let(viewModel::createBackup) }
-    val importJsonLauncher = rememberLauncherForActivityResult(
+    val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
-    ) { uri -> uri?.let(viewModel::importJson) }
-    val importCsvLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument(),
-    ) { uri -> uri?.let(viewModel::importCsv) }
+    ) { uri -> uri?.let(viewModel::importData) }
     val restoreLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri -> uri?.let(viewModel::prepareRestore) }
@@ -77,18 +78,18 @@ internal fun SettingsRoute(viewModel: DataTransferViewModel) {
     SettingsScreen(
         uiState = uiState,
         snackbarHostState = snackbarHostState,
+        onOpenLanShare = onOpenLanShare,
         onExportJson = {
             exportJsonLauncher.launch("FinanceOS-data-${fileTimestamp()}.json")
         },
         onExportCsv = {
             exportCsvLauncher.launch("FinanceOS-transactions-${fileTimestamp()}.csv")
         },
-        onImportJson = { importJsonLauncher.launch(arrayOf(JSON_MIME_TYPE, TEXT_MIME_TYPE)) },
-        onImportCsv = { importCsvLauncher.launch(arrayOf(CSV_MIME_TYPE, TEXT_MIME_TYPE)) },
+        onImport = { importLauncher.launch(arrayOf(ALL_FILES_MIME_TYPE)) },
         onCreateBackup = {
             backupLauncher.launch("FinanceOS-backup-${fileTimestamp()}.json")
         },
-        onChooseRestore = { restoreLauncher.launch(arrayOf(JSON_MIME_TYPE, TEXT_MIME_TYPE)) },
+        onChooseRestore = { restoreLauncher.launch(arrayOf(ALL_FILES_MIME_TYPE)) },
         onConfirmRestore = viewModel::confirmRestore,
         onDismissRestore = viewModel::dismissRestore,
     )
@@ -99,10 +100,10 @@ internal fun SettingsRoute(viewModel: DataTransferViewModel) {
 internal fun SettingsScreen(
     uiState: DataTransferUiState,
     snackbarHostState: SnackbarHostState,
+    onOpenLanShare: () -> Unit,
     onExportJson: () -> Unit,
     onExportCsv: () -> Unit,
-    onImportJson: () -> Unit,
-    onImportCsv: () -> Unit,
+    onImport: () -> Unit,
     onCreateBackup: () -> Unit,
     onChooseRestore: () -> Unit,
     onConfirmRestore: () -> Unit,
@@ -133,20 +134,11 @@ internal fun SettingsScreen(
             item { SettingsSectionTitle("导入数据") }
             item {
                 SettingsAction(
-                    title = "导入完整数据（JSON）",
-                    description = "按 ID 合并；不会删除文件中未涉及的本机数据",
+                    title = "导入数据（JSON / CSV / XLSX）",
+                    description = "自动识别文件格式；按 ID 合并，不会删除文件中未涉及的本机数据",
                     icon = Icons.Default.Add,
                     enabled = !uiState.isBusy,
-                    onClick = onImportJson,
-                )
-            }
-            item {
-                SettingsAction(
-                    title = "导入流水（CSV）",
-                    description = "按流水 ID 合并，金额使用无损的最小单位字段",
-                    icon = Icons.Default.Add,
-                    enabled = !uiState.isBusy,
-                    onClick = onImportCsv,
+                    onClick = onImport,
                 )
             }
             item { HorizontalDivider() }
@@ -171,6 +163,16 @@ internal fun SettingsScreen(
             }
             item { HorizontalDivider() }
             item {
+                SettingsAction(
+                    title = "局域网共享",
+                    description = "与电脑/手机手动同步流水",
+                    icon = Icons.Default.Share,
+                    enabled = !uiState.isBusy,
+                    onClick = onOpenLanShare,
+                )
+            }
+            item { HorizontalDivider() }
+            item {
                 ListItem(
                     headlineContent = { Text("数据与隐私") },
                     supportingContent = { Text("FinanceOS 数据默认仅保存在本机；你可随时导出") },
@@ -181,7 +183,7 @@ internal fun SettingsScreen(
                     headlineContent = { Text("关于 FinanceOS") },
                     supportingContent = {
                         Text(
-                            text = "版本 0.2.0 · isnaeguo",
+                            text = "版本 0.4.0 · isnaeguo",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     },
@@ -281,4 +283,6 @@ private fun fileTimestamp(): String = FILE_TIMESTAMP_FORMATTER.format(LocalDateT
 private val FILE_TIMESTAMP_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
 private const val JSON_MIME_TYPE = "application/json"
 private const val CSV_MIME_TYPE = "text/csv"
-private const val TEXT_MIME_TYPE = "text/plain"
+
+// 导入一律放行所有文件，由应用按文件内容识别格式（避免部分文档提供器因 MIME 过滤显示为空）。
+private const val ALL_FILES_MIME_TYPE = "*/*"

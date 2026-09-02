@@ -23,6 +23,18 @@ kotlin {
         withHostTest {}
     }
 
+    // iOS 准备：启用 Apple targets 并为每个 target 导出静态 Framework，
+    // 供未来的 Xcode iOS App 直接链接使用。
+    listOf(
+        iosArm64(),
+        iosSimulatorArm64(),
+    ).forEach { iosTarget ->
+        iosTarget.binaries.framework {
+            baseName = "FinanceOSShared"
+            isStatic = true
+        }
+    }
+
     sourceSets {
         commonMain.dependencies {
             implementation(libs.androidx.room3.runtime)
