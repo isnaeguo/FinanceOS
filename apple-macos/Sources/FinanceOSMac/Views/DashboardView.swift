@@ -357,7 +357,7 @@ private struct TotalBudgetContent: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(formatMoney(usage.amountUsed))
+                Text(formatMoney(max(0, usage.amountUsed)))
                     .font(.system(size: 26, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                 Text("/ \(formatMoney(usage.amountLimit ?? 0))")
@@ -379,6 +379,7 @@ private struct TotalBudgetContent: View {
             return "已超支 \(formatMoney(-remaining))"
         }
         if let ratio = usage.usageRatio {
+            if ratio <= 0 { return "本月有结余，剩余 \(formatMoney(remaining))" }
             return String(format: "已使用 %.0f%%，剩余 %@", ratio * 100, formatMoney(remaining))
         }
         return "剩余 \(formatMoney(remaining))"

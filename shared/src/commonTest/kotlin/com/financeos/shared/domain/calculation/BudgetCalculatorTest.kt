@@ -67,9 +67,17 @@ class BudgetCalculatorTest {
         assertFailsWith<IllegalArgumentException> {
             budget(amountLimit = -1L)
         }
-        assertFailsWith<IllegalArgumentException> {
-            BudgetCalculator.calculate(budget(), amountUsed = -1L)
-        }
+    }
+
+    @Test
+    fun negativeNetSpendMeansSurplusNotOverBudget() {
+        // 月总预算按净支出统计：收入大于支出时 amountUsed 为负 = 本月有结余。
+        val usage = BudgetCalculator.calculate(budget(amountLimit = 300_000L), amountUsed = -3_000L)
+        assertEquals(-3_000L, usage.amountUsed)
+        assertEquals(303_000L, usage.amountRemaining)
+        assertEquals(-0.01, usage.usageRatio!!, absoluteTolerance = 0.000_001)
+        assertFalse(usage.isOverBudget)
+        assertTrue(usage.hasBudget)
     }
 
     @Test

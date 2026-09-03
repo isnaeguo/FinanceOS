@@ -35,10 +35,10 @@ internal fun EmptyState(
             contentDescription = null,
             tint = MaterialTheme.colorScheme.primary,
         )
-        Text(text = title, style = MaterialTheme.typography.titleLarge)
+        Text(text = title, color = glassCardSecondaryText(), style = MaterialTheme.typography.titleLarge)
         Text(
             text = description,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = glassCardSecondaryText(),
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
         )
@@ -64,7 +64,7 @@ internal fun LoadingState(
         CircularProgressIndicator()
         Text(
             text = label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = glassCardSecondaryText(),
             style = MaterialTheme.typography.bodyMedium,
         )
     }

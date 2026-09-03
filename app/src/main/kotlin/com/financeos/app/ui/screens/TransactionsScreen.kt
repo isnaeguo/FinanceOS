@@ -1,4 +1,6 @@
 package com.financeos.app.ui.screens
+import com.financeos.app.ui.components.glassCardSecondaryText
+import com.financeos.app.ui.components.glassTextFieldColors
 
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -29,6 +31,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHost
@@ -58,6 +61,8 @@ import com.financeos.app.ui.viewmodel.TransactionsEvent
 import com.financeos.app.ui.viewmodel.TransactionsUiState
 import com.financeos.app.ui.viewmodel.TransactionsViewModel
 import com.financeos.shared.domain.model.TransactionType
+import com.financeos.app.ui.components.GlassIconCircle
+import androidx.compose.ui.graphics.Color
 
 /** 连接流水 ViewModel 与页面内容。 */
 @Composable
@@ -273,6 +278,7 @@ private fun TransactionFilters(
                 .padding(horizontal = 16.dp),
             label = { Text("搜索备注") },
             placeholder = { Text("例如：午饭") },
+            colors = glassTextFieldColors(),
             leadingIcon = {
                 Icon(imageVector = Icons.Default.Search, contentDescription = null)
             },
@@ -450,21 +456,17 @@ private fun TransactionList(
             key = TransactionItemUiState::id,
         ) { item ->
             ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 leadingContent = {
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.secondaryContainer,
+                    GlassIconCircle(
+                        tint = MaterialTheme.colorScheme.secondary,
+                        size = 44.dp,
                     ) {
-                        Box(
-                            modifier = Modifier.size(44.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                imageVector = categoryIcon(item.categoryIconKey),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                            )
-                        }
+                        Icon(
+                            imageVector = categoryIcon(item.categoryIconKey),
+                            contentDescription = null,
+                            tint = glassCardSecondaryText(),
+                        )
                     }
                 },
                 headlineContent = { Text(item.categoryName) },
@@ -476,7 +478,7 @@ private fun TransactionList(
                         // 明确显示“收入/支出”文字及正负号，不让方向信息只依赖颜色。
                         Text(
                             text = "${item.typeLabel} · ${item.dateTimeText}",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = glassCardSecondaryText(),
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
@@ -498,14 +500,14 @@ private fun TransactionList(
                             Icon(
                                 imageVector = Icons.Default.Edit,
                                 contentDescription = "改${item.categoryName}的分类",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = glassCardSecondaryText(),
                             )
                         }
                         IconButton(onClick = { onDeleteRequested(item.id) }) {
                             Icon(
                                 imageVector = Icons.Default.Delete,
                                 contentDescription = "删除${item.categoryName}流水",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = glassCardSecondaryText(),
                             )
                         }
                     }

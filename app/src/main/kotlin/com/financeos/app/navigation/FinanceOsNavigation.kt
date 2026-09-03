@@ -9,6 +9,10 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
+import android.os.Build
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -23,9 +27,12 @@ import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -33,8 +40,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -45,6 +54,13 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.financeos.app.FinanceOsApplication
+import com.financeos.app.ui.components.BrandBackdrop
+import com.financeos.app.ui.components.BrandGradientExtendedFab
+import com.financeos.app.ui.components.BrandGradientFab
+import com.financeos.app.ui.components.LocalGlassHaze
+import com.financeos.app.ui.components.glassHaze
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 import com.financeos.app.ui.screens.AddTransactionRoute
 import com.financeos.app.ui.screens.BudgetRoute
 import com.financeos.app.ui.screens.HomeRoute
@@ -99,9 +115,28 @@ fun FinanceOsNavigation() {
         currentDestination?.hierarchy?.any { it.route == destination.route } == true
     } || backStackEntry == null
 
+    val glassHaze = remember { HazeState() }
+    Box(modifier = Modifier.fillMaxSize()) {
+        BrandBackdrop(
+            modifier = Modifier
+                .fillMaxSize()
+                .hazeSource(glassHaze),
+        )
+        CompositionLocalProvider(LocalGlassHaze provides glassHaze) {
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
+                modifier = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    Modifier.glassHaze()
+                } else {
+                    // API<31 无 RenderEffect：TopAppBar 用半透明面近似玻璃，避免内容直接透出。
+                    Modifier.background(MaterialTheme.colorScheme.surface.copy(alpha = 0.84f))
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
+                ),
                 title = { Text(titleForRoute(currentRoute)) },
                 navigationIcon = {
                     if (!isTopLevelDestination) {
@@ -127,7 +162,10 @@ fun FinanceOsNavigation() {
         },
         bottomBar = {
             if (isTopLevelDestination) {
-                NavigationBar {
+                NavigationBar(
+                    modifier = Modifier.glassHaze(),
+                    containerColor = Color.Transparent,
+                ) {
                     topLevelDestinations.forEach { destination ->
                         val selected = currentDestination?.hierarchy?.any {
                             it.route == destination.route
@@ -150,6 +188,13 @@ fun FinanceOsNavigation() {
                                 )
                             },
                             label = { Text(destination.label) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.onSurface,
+                                selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                                indicatorColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            ),
                         )
                     }
                 }
@@ -163,16 +208,16 @@ fun FinanceOsNavigation() {
                 exit = fadeOut(tween(100)) + scaleOut(tween(100), targetScale = 0.9f),
             ) {
                 if (useCompactFab) {
-                    FloatingActionButton(
+                    BrandGradientFab(
                         onClick = { navController.navigate(ADD_TRANSACTION_ROUTE) },
-                    ) {
-                        Icon(imageVector = Icons.Default.Add, contentDescription = "记一笔")
-                    }
+                        contentDescription = "记一笔",
+                        icon = Icons.Default.Add,
+                    )
                 } else {
-                    ExtendedFloatingActionButton(
+                    BrandGradientExtendedFab(
                         onClick = { navController.navigate(ADD_TRANSACTION_ROUTE) },
-                        icon = { Icon(imageVector = Icons.Default.Add, contentDescription = null) },
-                        text = { Text("记一笔") },
+                        icon = Icons.Default.Add,
+                        text = "记一笔",
                     )
                 }
             }
@@ -304,7 +349,9 @@ fun FinanceOsNavigation() {
                 }
             }
         },
-    )
+            )
+        }
+    }
 }
 
 private fun String?.isTopLevelRoute(): Boolean =

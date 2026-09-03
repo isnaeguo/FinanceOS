@@ -121,8 +121,9 @@ class MonthlyUseCasesTest {
 
         val status = useCase(period(2026, 8))
 
-        assertEquals(30_000L, status.total.amountUsed)
-        assertEquals(70_000L, status.total.amountRemaining)
+        // 月总预算按净支出（支出 30000 − 收入 50000 = −20000）：本月有结余，剩余 100000+20000。
+        assertEquals(-20_000L, status.total.amountUsed)
+        assertEquals(120_000L, status.total.amountRemaining)
         assertEquals(20_000L, status.categories.getValue("food").amountUsed)
         assertEquals(10_000L, status.categories.getValue("food").amountRemaining)
         assertEquals(0L, status.categories.getValue("entertainment").amountUsed)

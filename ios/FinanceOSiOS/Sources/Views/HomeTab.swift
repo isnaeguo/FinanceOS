@@ -80,7 +80,7 @@ struct HomeTab: View {
                 Label("月总预算", systemImage: "target")
                     .font(.headline)
                 if status.total.hasBudget {
-                    Text("\(formatMoney(status.total.amountUsed)) / \(formatMoney(status.total.amountLimit ?? 0))")
+                    Text("\(formatMoney(max(0, status.total.amountUsed))) / \(formatMoney(status.total.amountLimit ?? 0))")
                         .font(.title3.weight(.semibold).monospacedDigit())
                     MiniProgressBar(ratio: status.total.usageRatio, isOver: status.total.isOverBudget)
                     Text(remainingText(status.total))
@@ -98,6 +98,7 @@ struct HomeTab: View {
         guard let remaining = usage.amountRemaining else { return "" }
         if usage.isOverBudget { return "已超支 \(formatMoney(-remaining))" }
         if let ratio = usage.usageRatio {
+            if ratio <= 0 { return "本月有结余，剩余 \(formatMoney(remaining))" }
             return String(format: "已使用 %.0f%%，剩余 %@", ratio * 100, formatMoney(remaining))
         }
         return "剩余 \(formatMoney(remaining))"

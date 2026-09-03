@@ -1,4 +1,7 @@
 package com.financeos.app.ui.screens
+import com.financeos.app.ui.components.glassCardSecondaryText
+import com.financeos.app.ui.components.GlassCard
+import com.financeos.app.ui.components.glassTextFieldColors
 
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -53,6 +56,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.financeos.app.ui.components.EmptyState
 import com.financeos.app.ui.components.LoadingState
 import com.financeos.app.ui.components.MonthSelector
+import com.financeos.app.ui.components.GlassIconCircle
 import com.financeos.app.ui.components.categoryIcon
 import com.financeos.app.ui.viewmodel.BudgetEditorUiState
 import com.financeos.app.ui.viewmodel.BudgetEvent
@@ -155,7 +159,7 @@ internal fun BudgetScreen(
                 }
 
                 item {
-                    Text("月总预算", style = MaterialTheme.typography.titleLarge)
+                    Text("月总预算", color = glassCardSecondaryText(), style = MaterialTheme.typography.titleLarge)
                 }
 
                 uiState.total?.let { total ->
@@ -182,7 +186,7 @@ internal fun BudgetScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        Text("分类预算", style = MaterialTheme.typography.titleLarge)
+                        Text("分类预算", color = glassCardSecondaryText(), style = MaterialTheme.typography.titleLarge)
                         TextButton(
                             onClick = onAddCategory,
                             enabled = uiState.canAddCategoryBudget,
@@ -195,15 +199,15 @@ internal fun BudgetScreen(
 
                 if (uiState.categoryBudgets.isEmpty()) {
                     item {
-                        OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                        GlassCard(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier.padding(20.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                Text("尚未设置分类预算", style = MaterialTheme.typography.titleMedium)
+                                Text("尚未设置分类预算", color = glassCardSecondaryText(), style = MaterialTheme.typography.titleMedium)
                                 Text(
                                     "为餐饮、交通等分类设置独立额度，更容易发现具体支出压力。",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = glassCardSecondaryText(),
                                 )
                                 OutlinedButton(
                                     onClick = onAddCategory,
@@ -251,15 +255,15 @@ private fun MissingTotalBudgetCard(
     amountUsedText: String,
     onSetBudget: () -> Unit,
 ) {
-    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text("尚未设置${periodLabel}总预算", style = MaterialTheme.typography.titleMedium)
+            Text("尚未设置${periodLabel}总预算", color = glassCardSecondaryText(), style = MaterialTheme.typography.titleMedium)
             Text(
                 text = "${periodLabel}已使用 $amountUsedText。设置预算后即可查看剩余额度和使用比例。",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = glassCardSecondaryText(),
             )
             Button(onClick = onSetBudget) {
                 Text("设置月总预算")
@@ -274,7 +278,7 @@ private fun CategoryBudgetCard(
     onEdit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Card(modifier = modifier.fillMaxWidth()) {
+    GlassCard(modifier = modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -283,20 +287,15 @@ private fun CategoryBudgetCard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.secondaryContainer,
+                GlassIconCircle(
+                    tint = MaterialTheme.colorScheme.secondary,
+                    size = 40.dp,
                 ) {
-                    Box(
-                        modifier = Modifier.size(40.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = categoryIcon(budget.categoryIconKey),
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                        )
-                    }
+                    Icon(
+                        imageVector = categoryIcon(budget.categoryIconKey),
+                        contentDescription = null,
+                        tint = glassCardSecondaryText(),
+                    )
                 }
                 Text(
                     text = budget.categoryName,
@@ -320,7 +319,7 @@ private fun BudgetUsageCard(
     usage: BudgetUsageUiState,
     onEdit: () -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -330,7 +329,7 @@ private fun BudgetUsageCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text(title, style = MaterialTheme.typography.titleMedium)
+                Text(title, color = glassCardSecondaryText(), style = MaterialTheme.typography.titleMedium)
                 TextButton(onClick = onEdit) {
                     Text("修改")
                 }
@@ -389,7 +388,7 @@ private fun BudgetUsageContent(usage: BudgetUsageUiState) {
         Text(
             text = "使用比例 ${usage.usageRatioText}",
             modifier = Modifier.weight(1f),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = glassCardSecondaryText(),
             style = MaterialTheme.typography.bodyMedium,
         )
         BudgetStatusLabel(usage)
@@ -422,11 +421,12 @@ private fun BudgetMetric(
 private fun BudgetMetricText(label: String, value: String) {
     Text(
         text = label,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        color = glassCardSecondaryText(),
         style = MaterialTheme.typography.labelMedium,
     )
     Text(
         text = value,
+        color = glassCardSecondaryText(),
         style = MaterialTheme.typography.titleSmall.copy(fontFeatureSettings = "tnum"),
         maxLines = 1,
     )
@@ -437,9 +437,9 @@ private fun BudgetStatusLabel(usage: BudgetUsageUiState) {
     Surface(
         shape = MaterialTheme.shapes.small,
         color = if (usage.isOverBudget) {
-            MaterialTheme.colorScheme.errorContainer
+            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.20f)
         } else {
-            MaterialTheme.colorScheme.secondaryContainer
+            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.20f)
         },
     ) {
         Row(
@@ -456,6 +456,7 @@ private fun BudgetStatusLabel(usage: BudgetUsageUiState) {
             }
             Text(
                 text = usage.statusText,
+                color = glassCardSecondaryText(),
                 style = MaterialTheme.typography.labelMedium,
             )
         }
@@ -520,6 +521,7 @@ private fun BudgetEditorDialog(
                     label = { Text("预算金额") },
                     placeholder = { Text("0.00") },
                     prefix = { Text("¥") },
+                    colors = glassTextFieldColors(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     isError = editor.amountError != null,
                     supportingText = editor.amountError?.let { message ->

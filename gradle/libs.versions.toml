@@ -4,6 +4,7 @@ kotlin = "2.4.10"
 activityCompose = "1.13.0"
 composeBom = "2026.08.00"
 coroutines = "1.11.0"
+haze = "1.6.0"
 ksp = "2.3.11"
 lifecycle = "2.11.0"
 navigation = "2.9.8"
@@ -22,6 +23,7 @@ androidx-navigation-compose = { module = "androidx.navigation:navigation-compose
 androidx-room3-compiler = { module = "androidx.room3:room3-compiler", version.ref = "room3" }
 androidx-room3-runtime = { module = "androidx.room3:room3-runtime", version.ref = "room3" }
 androidx-sqlite-bundled = { module = "androidx.sqlite:sqlite-bundled", version.ref = "sqlite" }
+haze = { module = "dev.chrisbanes.haze:haze", version.ref = "haze" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }

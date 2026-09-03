@@ -58,7 +58,7 @@ struct BudgetTab: View {
                     .controlSize(.small)
                 }
                 if usage.hasBudget {
-                    Text("\(formatMoney(usage.amountUsed)) / \(formatMoney(usage.amountLimit ?? 0))")
+                    Text("\(formatMoney(max(0, usage.amountUsed))) / \(formatMoney(usage.amountLimit ?? 0))")
                         .font(.title2.weight(.semibold).monospacedDigit())
                     MiniProgressBar(ratio: usage.usageRatio, isOver: usage.isOverBudget)
                     if let remaining = usage.amountRemaining, !usage.isOverBudget {

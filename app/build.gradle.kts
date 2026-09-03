@@ -20,8 +20,8 @@ android {
         applicationId = "com.financeos.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 8
-        versionName = "1.0.0"
+        versionCode = 11
+        versionName = "1.0.3"
     }
 
     compileOptions {
@@ -60,6 +60,7 @@ dependencies {
     implementation(project(":shared"))
 
     implementation(libs.androidx.activity.compose)
+    implementation(libs.haze)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.material.icons.core)
     implementation(libs.androidx.compose.material3)

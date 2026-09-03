@@ -54,7 +54,8 @@ class DashboardUiStateTest {
             zoneId = ZoneId.of("UTC"),
         )
 
-        assertEquals("¥100.00", state.monthlyExpenseText)
+        // 首页「支出」与预算是净支出口径：10000 − 20000 = −10000 → -¥100.00。
+        assertEquals("-¥100.00", state.monthlyExpenseText)
         assertEquals("¥30.00", state.dailyExpenseText)
         assertEquals("¥200.00", state.monthlyIncomeText)
         assertEquals("超出 ¥20.00", state.remainingBudgetText)

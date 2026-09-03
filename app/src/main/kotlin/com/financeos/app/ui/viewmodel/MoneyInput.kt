@@ -35,13 +35,15 @@ internal fun parseAmountInMinorUnits(
 
 /** 使用统一的人民币符号、千位分隔和两位小数展示非负金额。 */
 internal fun formatMoney(amountMinor: Long): String {
-    require(amountMinor >= 0L) { "Money amount must not be negative." }
-    val major = amountMinor / 100L
-    val minor = amountMinor % 100L
+    // 净支出允许为负（支出−收入）：负数按绝对值格式化并加负号前缀，避免整数除法的截断错误。
+    val negative = amountMinor < 0L
+    val safeAbs = kotlin.math.abs(amountMinor)
+    val major = safeAbs / 100L
+    val minor = safeAbs % 100L
     val groupedMajor = major.toString()
         .reversed()
         .chunked(3)
         .joinToString(",")
         .reversed()
-    return "¥$groupedMajor.${minor.toString().padStart(2, '0')}"
+    return (if (negative) "-" else "") + "¥$groupedMajor.${minor.toString().padStart(2, '0')}"
 }

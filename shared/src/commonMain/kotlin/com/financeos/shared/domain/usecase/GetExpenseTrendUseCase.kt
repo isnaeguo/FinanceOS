@@ -65,19 +65,31 @@ class GetExpenseTrendUseCase(
         periods: List<ExpenseTrendPeriod>,
         transactions: List<Transaction>,
     ): List<ExpenseTrendPoint> = periods.map { period ->
-        val amount = transactions.asSequence()
-            .filter { transaction ->
-                transaction.type == TransactionType.EXPENSE &&
-                    transaction.dateTime >= period.startInclusive &&
-                    transaction.dateTime < period.endExclusive
+        // 趋势与首页「支出」/月总预算保持一致：按净支出（支出 − 收入）聚合，收入≥支出时为负（有结余）。
+        var expense = 0L
+        var income = 0L
+        for (transaction in transactions) {
+            if (transaction.dateTime < period.startInclusive ||
+                transaction.dateTime >= period.endExclusive
+            ) {
+                continue
             }
-            .fold(0L) { total, transaction ->
-                // 趋势同样属于财务汇总，溢出时必须失败，不能悄悄显示成负数。
-                require(transaction.amount <= Long.MAX_VALUE - total) {
-                    "Expense trend total exceeds Long range."
+            when (transaction.type) {
+                TransactionType.EXPENSE -> {
+                    require(transaction.amount <= Long.MAX_VALUE - expense) {
+                        "Expense trend total exceeds Long range."
+                    }
+                    expense += transaction.amount
                 }
-                total + transaction.amount
+
+                TransactionType.INCOME -> {
+                    require(transaction.amount <= Long.MAX_VALUE - income) {
+                        "Expense trend total exceeds Long range."
+                    }
+                    income += transaction.amount
+                }
             }
-        ExpenseTrendPoint(key = period.key, amount = amount)
+        }
+        ExpenseTrendPoint(key = period.key, amount = expense - income)
     }
 }

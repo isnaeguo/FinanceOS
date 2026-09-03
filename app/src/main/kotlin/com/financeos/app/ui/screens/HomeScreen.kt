@@ -8,6 +8,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -44,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -52,6 +54,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import com.financeos.app.ui.components.GlassCard
+import com.financeos.app.ui.components.GlassIconCircle
+import com.financeos.app.ui.components.glassCardSecondaryText
+import com.financeos.app.ui.components.glassHaze
 import com.financeos.app.ui.components.EmptyState
 import com.financeos.app.ui.components.LoadingState
 import com.financeos.app.ui.components.MonthSelector
@@ -154,7 +160,7 @@ internal fun HomeScreen(
                     item {
                         Text(
                             text = uiState.dailyAvailableExplanation,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = glassCardSecondaryText(),
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
@@ -201,18 +207,16 @@ internal fun HomeScreen(
 
 @Composable
 private fun MonthlyTrendCard(points: List<DashboardTrendPointUiState>) {
-    Surface(
+    GlassCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
         if (points.isEmpty() || points.all { it.progress == 0f }) {
             Text(
                 text = "最近 6 个月还没有支出趋势。",
                 modifier = Modifier.padding(20.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = glassCardSecondaryText(),
             )
-            return@Surface
+            return@GlassCard
         }
         Column(
             modifier = Modifier
@@ -236,8 +240,8 @@ private fun MonthlyTrendCard(points: List<DashboardTrendPointUiState>) {
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
-                            Text(point.label, style = MaterialTheme.typography.labelMedium)
-                            Text(point.amountText, style = MaterialTheme.typography.labelMedium)
+                            Text(point.label, color = glassCardSecondaryText(), style = MaterialTheme.typography.labelMedium)
+                            Text(point.amountText, color = glassCardSecondaryText(), style = MaterialTheme.typography.labelMedium)
                         }
                         LinearProgressIndicator(
                             progress = { animatedProgress },
@@ -253,6 +257,7 @@ private fun MonthlyTrendCard(points: List<DashboardTrendPointUiState>) {
                         Text(
                             point.label,
                             modifier = Modifier.weight(0.16f),
+                            color = glassCardSecondaryText(),
                             style = MaterialTheme.typography.labelMedium,
                         )
                         LinearProgressIndicator(
@@ -262,6 +267,7 @@ private fun MonthlyTrendCard(points: List<DashboardTrendPointUiState>) {
                         Text(
                             point.amountText,
                             modifier = Modifier.weight(0.3f),
+                            color = glassCardSecondaryText(),
                             style = MaterialTheme.typography.labelMedium,
                         )
                     }
@@ -277,10 +283,8 @@ private fun SpendingTrendCard(
     range: SpendingTrendRange,
     onRangeSelected: (SpendingTrendRange) -> Unit,
 ) {
-    Surface(
+    GlassCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -289,7 +293,7 @@ private fun SpendingTrendCard(
             Column(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Text("近期消费趋势", style = MaterialTheme.typography.titleMedium)
+                Text("近期消费趋势", color = glassCardSecondaryText(), style = MaterialTheme.typography.titleMedium)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     SpendingTrendRange.entries.forEach { option ->
                         FilterChip(
@@ -303,7 +307,7 @@ private fun SpendingTrendCard(
             if (points.isEmpty() || points.all { it.progress == 0f }) {
                 Text(
                     text = "${range.label}还没有支出。",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = glassCardSecondaryText(),
                 )
             } else {
                 ExpenseLineChart(points)
@@ -311,8 +315,8 @@ private fun SpendingTrendCard(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Text(points.first().label, style = MaterialTheme.typography.labelSmall)
-                    Text(points.last().label, style = MaterialTheme.typography.labelSmall)
+                    Text(points.first().label, color = glassCardSecondaryText(), style = MaterialTheme.typography.labelSmall)
+                    Text(points.last().label, color = glassCardSecondaryText(), style = MaterialTheme.typography.labelSmall)
                 }
             }
         }
@@ -352,14 +356,34 @@ private fun ExpenseLineChart(points: List<DashboardTrendPointUiState>) {
             strokeWidth = 1.dp.toPx(),
         )
         path.reset()
-        points.forEachIndexed { index, point ->
+        val coords = points.mapIndexed { index, point ->
             val x = if (points.size == 1) {
                 size.width / 2f
             } else {
                 size.width * index.toFloat() / points.lastIndex.toFloat()
             }
             val y = baselineY - point.progress * animation.value * (baselineY - 8.dp.toPx())
-            if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            androidx.compose.ui.geometry.Offset(x, y)
+        }
+        // 用三次贝塞尔把相邻点连成平滑曲线（过每个数据点）：每个线段取起点/终点，
+        // 控制点沿前/后相邻点方向，使曲线连续且不过冲。
+        if (coords.isNotEmpty()) {
+            path.moveTo(coords.first().x, coords.first().y)
+            for (index in 1 until coords.size) {
+                val prev = coords[index - 1]
+                val curr = coords[index]
+                val next = if (index + 1 < coords.size) coords[index + 1] else curr
+                val before = if (index - 2 >= 0) coords[index - 2] else prev
+                val cp1 = androidx.compose.ui.geometry.Offset(
+                    x = prev.x + (curr.x - before.x) / 6f,
+                    y = prev.y + (curr.y - before.y) / 6f,
+                )
+                val cp2 = androidx.compose.ui.geometry.Offset(
+                    x = curr.x - (next.x - prev.x) / 6f,
+                    y = curr.y - (next.y - prev.y) / 6f,
+                )
+                path.cubicTo(cp1.x, cp1.y, cp2.x, cp2.y, curr.x, curr.y)
+            }
         }
         drawPath(
             path = path,
@@ -401,10 +425,8 @@ private fun DashboardMetrics(uiState: DashboardUiState) {
         )
     }
 
-    Surface(
+    GlassCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
         if (uiState.isCurrentMonth && stackMetrics) {
             Column(
@@ -436,14 +458,23 @@ private fun DashboardMetrics(uiState: DashboardUiState) {
 private fun MonthlyOverviewCard(uiState: DashboardUiState) {
     val stackExpenses = LocalDensity.current.fontScale >= 1.5f
     val monthReference = monthReferenceLabel(uiState)
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-        ),
+    GlassCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .glassHaze(),
     ) {
         Column(
-            modifier = Modifier.padding(20.dp),
+            // hero 卡内只叠加极淡的品牌青色调，让光斑从玻璃底透出；不设实体色板。
+            modifier = Modifier
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+                            Color.Transparent,
+                        ),
+                    ),
+                )
+                .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (stackExpenses) {
@@ -496,12 +527,12 @@ private fun MonthlyOverviewCard(uiState: DashboardUiState) {
             ) {
                 Text(
                     text = "${monthReference}收入",
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f),
+                    color = glassCardSecondaryText().copy(alpha = 0.78f),
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 AnimatedAmountText(
                     text = uiState.monthlyIncomeText,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    color = glassCardSecondaryText(),
                     style = MaterialTheme.typography.titleMedium,
                 )
             }
@@ -524,12 +555,12 @@ private fun ExpenseMetric(
     ) {
         Text(
             text = label,
-            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f),
+            color = glassCardSecondaryText().copy(alpha = 0.78f),
             style = MaterialTheme.typography.titleMedium,
         )
         AnimatedAmountText(
             text = value,
-            color = MaterialTheme.colorScheme.onPrimaryContainer,
+            color = glassCardSecondaryText(),
             style = if (isPrimary) {
                 MaterialTheme.typography.headlineLarge
             } else {
@@ -554,7 +585,7 @@ private fun DashboardMetricCard(
     ) {
         Text(
             text = label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = glassCardSecondaryText(),
             style = MaterialTheme.typography.labelLarge,
         )
         AnimatedAmountText(
@@ -569,7 +600,7 @@ private fun DashboardMetricCard(
         )
         Text(
             text = supportingText,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = glassCardSecondaryText(),
             style = MaterialTheme.typography.bodySmall,
         )
     }
@@ -619,7 +650,7 @@ private fun BudgetProgressCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text("预算进度", style = MaterialTheme.typography.titleMedium)
+                Text("预算进度", color = glassCardSecondaryText(), style = MaterialTheme.typography.titleMedium)
                 if (uiState.hasBudget) {
                     TextButton(onClick = onOpenBudget) {
                         Text("管理")
@@ -658,7 +689,7 @@ private fun BudgetProgressCard(
                     color = if (uiState.isOverBudget) {
                         MaterialTheme.colorScheme.error
                     } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                        glassCardSecondaryText()
                     },
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -683,10 +714,14 @@ private fun SectionTitle(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(text = title, style = MaterialTheme.typography.titleMedium)
+        Text(
+            text = title,
+            color = glassCardSecondaryText(),
+            style = MaterialTheme.typography.titleMedium,
+        )
         if (actionLabel != null && onAction != null) {
             TextButton(onClick = onAction) {
-                Text(actionLabel)
+                Text(actionLabel, color = glassCardSecondaryText())
             }
         }
     }
@@ -699,7 +734,7 @@ private fun TopCategoriesCard(categories: List<DashboardCategoryUiState>) {
             Text(
                 text = "本月还没有支出，开始记账后会显示消费最多的分类。",
                 modifier = Modifier.padding(20.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = glassCardSecondaryText(),
             )
         }
         return
@@ -715,20 +750,15 @@ private fun TopCategoriesCard(categories: List<DashboardCategoryUiState>) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.secondaryContainer,
+                    GlassIconCircle(
+                        tint = MaterialTheme.colorScheme.secondary,
+                        size = 40.dp,
                     ) {
-                        Box(
-                            modifier = Modifier.size(40.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                imageVector = categoryIcon(category.categoryIconKey),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                            )
-                        }
+                        Icon(
+                            imageVector = categoryIcon(category.categoryIconKey),
+                            contentDescription = null,
+                            tint = glassCardSecondaryText(),
+                        )
                     }
                     Column(
                         modifier = Modifier.weight(1f),
@@ -738,8 +768,8 @@ private fun TopCategoriesCard(categories: List<DashboardCategoryUiState>) {
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
-                            Text(category.categoryName, style = MaterialTheme.typography.bodyLarge)
-                            Text(category.amountText, style = MaterialTheme.typography.bodyMedium)
+                            Text(category.categoryName, color = glassCardSecondaryText(), style = MaterialTheme.typography.bodyLarge)
+                            Text(category.amountText, color = glassCardSecondaryText(), style = MaterialTheme.typography.bodyMedium)
                         }
                         val animatedProgress by animateFloatAsState(
                             targetValue = category.progress,
@@ -756,7 +786,7 @@ private fun TopCategoriesCard(categories: List<DashboardCategoryUiState>) {
                     }
                     Text(
                         text = category.shareText,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = glassCardSecondaryText(),
                         style = MaterialTheme.typography.labelMedium,
                     )
                 }
@@ -771,7 +801,7 @@ private fun RecentTransactionsCard(transactions: List<DashboardTransactionUiStat
             Text(
                 text = "暂无最近流水。点击“记一笔”后，新记录会出现在这里。",
                 modifier = Modifier.padding(20.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = glassCardSecondaryText(),
             )
         }
         return
@@ -792,20 +822,15 @@ private fun RecentTransactionRow(transaction: DashboardTransactionUiState) {
     ListItem(
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         leadingContent = {
-            Surface(
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.secondaryContainer,
+            GlassIconCircle(
+                tint = MaterialTheme.colorScheme.secondary,
+                size = 40.dp,
             ) {
-                Box(
-                    modifier = Modifier.size(40.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = categoryIcon(transaction.categoryIconKey),
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                    )
-                }
+                Icon(
+                    imageVector = categoryIcon(transaction.categoryIconKey),
+                    contentDescription = null,
+                    tint = glassCardSecondaryText(),
+                )
             }
         },
         headlineContent = { Text(transaction.categoryName) },
@@ -829,7 +854,7 @@ private fun RecentTransactionRow(transaction: DashboardTransactionUiState) {
                 )
                 Text(
                     text = transaction.typeLabel,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = glassCardSecondaryText(),
                     style = MaterialTheme.typography.labelSmall,
                 )
             }

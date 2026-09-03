@@ -7,6 +7,9 @@ import com.financeos.shared.domain.model.Budget
  *
  * 没有设置预算时，[amountRemaining] 和 [usageRatio] 为 `null`，调用方可通过 [hasBudget] 明确区分。
  * [usageRatio] 是无量纲比例，不用于保存或计算货币金额，因此可以安全使用 [Double]。
+ *
+ * [amountUsed] 允许为负：月总预算按“净支出 = 支出 − 收入”统计，收入大于支出时为负，
+ * 表示当月有结余、不会超支。分类预算仍按分类支出统计（恒为非负）。
  */
 data class BudgetUsage(
     val amountLimit: Long?,
@@ -23,8 +26,6 @@ object BudgetCalculator {
         budget: Budget?,
         amountUsed: Long,
     ): BudgetUsage {
-        require(amountUsed >= 0) { "Budget amountUsed must not be negative." }
-
         if (budget == null) {
             // 没有预算就不存在可比较的额度，因此不虚构剩余金额、比例或超支状态。
             return BudgetUsage(

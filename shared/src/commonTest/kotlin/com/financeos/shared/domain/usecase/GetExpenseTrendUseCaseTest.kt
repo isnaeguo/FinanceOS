@@ -34,7 +34,8 @@ class GetExpenseTrendUseCaseTest {
 
         assertEquals(
             listOf(
-                ExpenseTrendPoint("08-01", 1_000L),
+                // 净支出口径：08-01 = 支出1000 − 收入9000 = −8000（有结余）；08-02 = 2350。
+                ExpenseTrendPoint("08-01", -8_000L),
                 ExpenseTrendPoint("08-02", 2_350L),
             ),
             GetExpenseTrendUseCase(repository)(periods),

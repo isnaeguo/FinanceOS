@@ -369,7 +369,7 @@ enum SummaryCalculations {
     }
 
     static func budgetUsage(budget: Budget?, amountUsed: Int64) -> BudgetUsage {
-        precondition(amountUsed >= 0, "Budget amountUsed must not be negative.")
+        // amountUsed 允许为负：月总预算按净支出统计，收入大于支出时有结余即不为超支。
         guard let budget else {
             return BudgetUsage(amountLimit: nil, amountUsed: amountUsed, amountRemaining: nil, usageRatio: nil, isOverBudget: false, hasBudget: false)
         }
@@ -392,7 +392,8 @@ enum SummaryCalculations {
             categoryUsages[categoryId] = budgetUsage(budget: budget, amountUsed: summary.expensesByCategory[categoryId] ?? 0)
         }
         return MonthlyBudgetStatus(
-            total: budgetUsage(budget: totalBudget, amountUsed: summary.totalExpense),
+            // 月总预算按净支出（支出 − 收入）统计：收入进账抵扣预算消耗，结余即未用完。
+            total: budgetUsage(budget: totalBudget, amountUsed: summary.totalExpense - summary.totalIncome),
             categories: categoryUsages
         )
     }
@@ -427,16 +428,23 @@ enum SummaryCalculations {
     }
 
     static func expenseTrend(periods: [ExpenseTrendPeriod], transactions: [Transaction]) -> [ExpenseTrendPoint] {
+        // 趋势与首页「支出」/月总预算同口径：净支出 = 支出 − 收入，收入≥支出时为负（有结余）。
         periods.map { period in
-            var amount: Int64 = 0
+            var expense: Int64 = 0
+            var income: Int64 = 0
             for transaction in transactions
-            where transaction.type == .expense &&
-                transaction.dateTime >= period.startInclusive &&
+            where transaction.dateTime >= period.startInclusive &&
                 transaction.dateTime < period.endExclusive {
-                precondition(transaction.amount <= Int64.max - amount, "Expense trend total exceeds Int64 range.")
-                amount += transaction.amount
+                switch transaction.type {
+                case .expense:
+                    precondition(transaction.amount <= Int64.max - expense, "Expense trend total exceeds Int64 range.")
+                    expense += transaction.amount
+                case .income:
+                    precondition(transaction.amount <= Int64.max - income, "Expense trend total exceeds Int64 range.")
+                    income += transaction.amount
+                }
             }
-            return ExpenseTrendPoint(key: period.key, amount: amount)
+            return ExpenseTrendPoint(key: period.key, amount: expense - income)
         }
     }
 

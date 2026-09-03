@@ -32,8 +32,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.financeos.mac
         INFOPLIST_FILE: AppInfo.plist
         CODE_SIGN_ENTITLEMENTS: App.entitlements
-        CURRENT_PROJECT_VERSION: "8"
-        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "10"
+        MARKETING_VERSION: "1.0.2"
         CODE_SIGN_STYLE: Automatic
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         OTHER_LDFLAGS: "$(inherited) -lsqlite3 -lc++"
@@ -71,8 +71,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.financeos.mac.widget
         INFOPLIST_FILE: WidgetInfo.plist
         CODE_SIGN_ENTITLEMENTS: Widget.entitlements
-        CURRENT_PROJECT_VERSION: "8"
-        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "10"
+        MARKETING_VERSION: "1.0.2"
         CODE_SIGN_STYLE: Automatic
         SKIP_INSTALL: YES
         APPLICATION_EXTENSION_API_ONLY: YES

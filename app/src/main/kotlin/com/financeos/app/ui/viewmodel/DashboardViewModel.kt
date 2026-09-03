@@ -388,7 +388,8 @@ internal fun buildDashboardUiState(
     return DashboardUiState(
         monthLabel = monthLabel,
         isLoading = false,
-        monthlyExpenseText = formatMoney(summary.totalExpense),
+        // 首页「支出」与月总预算同口径：净支出 = 支出 − 收入（结余时可为负），避免口径不一致。
+        monthlyExpenseText = formatMoney(summary.totalExpense - summary.totalIncome),
         dailyExpenseText = formatMoney(dailyExpense),
         monthlyIncomeText = formatMoney(summary.totalIncome),
         remainingBudgetText = when {
@@ -407,6 +408,7 @@ internal fun buildDashboardUiState(
         budgetProgressText = when {
             totalBudget.isOverBudget && remaining != null ->
                 "已超预算 ${formatMoney(abs(remaining))}"
+            ratio != null && ratio <= 0.0 -> "本月有结余"
             ratio != null -> "已使用 ${(ratio * 100.0).roundToInt()}%"
             totalBudget.hasBudget -> "预算为零，使用比例不可计算"
             else -> "尚未设置月总预算"
@@ -424,12 +426,17 @@ internal fun buildDashboardUiState(
 }
 
 private fun List<ExpenseTrendPoint>.toDashboardTrend(): List<DashboardTrendPointUiState> {
-    val maximum = maxOfOrNull { it.amount } ?: 0L
+    // 趋势金额为净支出（可负）：分母取绝对值的最大值，progress 夹到 0..1，避免负值导致比例越界。
+    val maximum = maxOfOrNull { kotlin.math.abs(it.amount) } ?: 0L
     return map { point ->
         DashboardTrendPointUiState(
             label = point.key,
             amountText = formatMoney(point.amount),
-            progress = if (maximum == 0L) 0f else point.amount.toFloat() / maximum.toFloat(),
+            progress = if (maximum == 0L) {
+                0f
+            } else {
+                (point.amount.toFloat() / maximum.toFloat()).coerceIn(0f, 1f)
+            },
         )
     }
 }

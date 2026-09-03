@@ -1,4 +1,5 @@
 package com.financeos.app.ui.screens
+import com.financeos.app.ui.components.glassCardSecondaryText
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -42,6 +43,8 @@ import com.financeos.app.ui.viewmodel.DataTransferUiState
 import com.financeos.app.ui.viewmodel.DataTransferViewModel
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import androidx.compose.ui.graphics.Color
+import com.financeos.app.ui.components.GlassCard
 
 /** 连接系统文件选择器与数据导入导出状态。 */
 @Composable
@@ -174,17 +177,20 @@ internal fun SettingsScreen(
             item { HorizontalDivider() }
             item {
                 ListItem(
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     headlineContent = { Text("数据与隐私") },
                     supportingContent = { Text("FinanceOS 数据默认仅保存在本机；你可随时导出") },
                 )
             }
             item {
                 ListItem(
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     headlineContent = { Text("关于 FinanceOS") },
                     supportingContent = {
                         Text(
-                            text = "版本 0.4.2 · isnaeguo",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            // 版本号取自构建配置，随 versionName 自动更新，避免硬编码过期。
+                            text = "版本 ${appVersionName()} · isnaeguo",
+                            color = glassCardSecondaryText(),
                         )
                     },
                 )
@@ -192,13 +198,10 @@ internal fun SettingsScreen(
         }
 
         if (uiState.isBusy) {
-            Surface(
+            GlassCard(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(16.dp),
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                tonalElevation = 3.dp,
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -257,10 +260,10 @@ private fun SettingsAction(
             headlineColor = MaterialTheme.colorScheme.onSurface.copy(
                 alpha = if (enabled) 1f else 0.38f,
             ),
-            supportingColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+            supportingColor = glassCardSecondaryText().copy(
                 alpha = if (enabled) 1f else 0.38f,
             ),
-            leadingIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+            leadingIconColor = glassCardSecondaryText().copy(
                 alpha = if (enabled) 1f else 0.38f,
             ),
         ),
@@ -273,7 +276,7 @@ private fun SettingsSectionTitle(title: String) {
     Text(
         text = title,
         modifier = Modifier.padding(start = 16.dp, top = 20.dp, end = 16.dp, bottom = 8.dp),
-        color = MaterialTheme.colorScheme.primary,
+        color = glassCardSecondaryText(),
         style = MaterialTheme.typography.labelLarge,
     )
 }
@@ -286,3 +289,15 @@ private const val CSV_MIME_TYPE = "text/csv"
 
 // 导入一律放行所有文件，由应用按文件内容识别格式（避免部分文档提供器因 MIME 过滤显示为空）。
 private const val ALL_FILES_MIME_TYPE = "*/*"
+
+/** 从 PackageManager 读取构建的 versionName，避免硬编码过期（返回 "未知" 兜底）。 */
+@Composable
+private fun appVersionName(): String {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    return try {
+        val info = context.packageManager.getPackageInfo(context.packageName, 0)
+        info.versionName ?: "未知"
+    } catch (error: Exception) {
+        "未知"
+    }
+}

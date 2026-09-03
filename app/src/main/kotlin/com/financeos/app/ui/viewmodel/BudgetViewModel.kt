@@ -366,6 +366,7 @@ class BudgetViewModel(
             else -> formatMoney(remaining)
         }
         val ratioText = when {
+            ratio != null && ratio <= 0.0 -> "本月有结余"
             ratio != null -> "${(ratio * 100.0).roundToInt()}%"
             hasBudget -> "比例不可计算"
             else -> "未设置"
@@ -374,7 +375,7 @@ class BudgetViewModel(
             hasBudget = hasBudget,
             amountLimitMinor = amountLimit,
             amountLimitText = amountLimit?.let(::formatMoney) ?: "未设置",
-            amountUsedText = formatMoney(amountUsed),
+            amountUsedText = formatMoney(maxOf(0L, amountUsed)),
             amountRemainingText = remainingText,
             usageRatioText = ratioText,
             progress = ratio?.toFloat()?.coerceIn(0f, 1f)

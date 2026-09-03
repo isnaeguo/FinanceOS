@@ -1,4 +1,8 @@
 package com.financeos.app.ui.screens
+import com.financeos.app.ui.components.glassCardSecondaryText
+import com.financeos.app.ui.components.BrandGradientButton
+import androidx.compose.ui.graphics.Color
+import com.financeos.app.ui.components.glassTextFieldColors
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -132,6 +136,7 @@ internal fun AddTransactionScreen(
                     label = { Text("金额") },
                     placeholder = { Text("0.00") },
                     prefix = { Text("¥") },
+                    colors = glassTextFieldColors(),
                     textStyle = MaterialTheme.typography.headlineMedium,
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                         keyboardType = KeyboardType.Decimal,
@@ -168,7 +173,7 @@ internal fun AddTransactionScreen(
             }
 
             item {
-                Text("分类", style = MaterialTheme.typography.titleMedium)
+                Text("分类", color = glassCardSecondaryText(), style = MaterialTheme.typography.titleMedium)
             }
             item {
                 when {
@@ -211,7 +216,7 @@ internal fun AddTransactionScreen(
             }
 
             item {
-                Text("日期时间", style = MaterialTheme.typography.titleMedium)
+                Text("日期时间", color = glassCardSecondaryText(), style = MaterialTheme.typography.titleMedium)
             }
             item {
                 Row(
@@ -241,6 +246,7 @@ internal fun AddTransactionScreen(
                     label = { Text("备注（可选）") },
                     placeholder = { Text("例如：午饭") },
                     maxLines = 3,
+                    colors = glassTextFieldColors(),
                 )
             }
 
@@ -255,27 +261,29 @@ internal fun AddTransactionScreen(
             }
         }
 
-        Surface(shadowElevation = 3.dp) {
-            Button(
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+        ) {
+            BrandGradientButton(
                 onClick = {
                     focusManager.clearFocus()
                     keyboardController?.hide()
                     onSave()
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                modifier = Modifier.fillMaxWidth(),
                 enabled = uiState.canSave,
             ) {
                 if (uiState.isSaving) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(20.dp),
                         strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary,
+                        color = Color.White,
                     )
                 } else {
-                    Text("保存")
+                    Text("保存", color = Color.White)
                 }
             }
         }

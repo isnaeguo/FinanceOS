@@ -1,4 +1,8 @@
 package com.financeos.app.ui.screens
+import com.financeos.app.ui.components.glassCardSecondaryText
+import com.financeos.app.ui.components.GlassCardPadded
+import com.financeos.app.ui.components.GlassCard
+import com.financeos.app.ui.components.glassTextFieldColors
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -86,7 +90,7 @@ internal fun LanShareScreen(
                 Text(
                     text = "两台设备需接入同一局域网。服务端把本机数据经 HTTP 提供给对端；" +
                         "拉取与推送都按“合并”处理，不会删除任何一方的本机数据。",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = glassCardSecondaryText(),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -100,6 +104,7 @@ internal fun LanShareScreen(
                     label = { Text("端口") },
                     supportingText = { Text("默认 45678，与电脑端一致") },
                     singleLine = true,
+                    colors = glassTextFieldColors(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 )
             }
@@ -169,6 +174,7 @@ internal fun LanShareScreen(
                     label = { Text("对方主机 IP") },
                     supportingText = { Text("例如 192.168.1.5，需对方共享服务已启动") },
                     singleLine = true,
+                    colors = glassTextFieldColors(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 )
             }
@@ -181,6 +187,7 @@ internal fun LanShareScreen(
                     label = { Text("对方配对码") },
                     supportingText = { Text("请输入对方共享服务展示的 10 位配对码") },
                     singleLine = true,
+                    colors = glassTextFieldColors(),
                 )
             }
             item {
@@ -207,13 +214,10 @@ internal fun LanShareScreen(
         }
 
         if (uiState.isBusy) {
-            Surface(
+            GlassCard(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(16.dp),
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                tonalElevation = 3.dp,
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -243,15 +247,14 @@ private fun SectionLabel(text: String) {
 
 @Composable
 private fun StatusCard(title: String, body: String) {
-    Surface(
+    GlassCardPadded(
         modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        padding = androidx.compose.ui.unit.Dp(14f),
     ) {
-        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+        Column {
             Text(
                 text = title,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = glassCardSecondaryText(),
                 style = MaterialTheme.typography.labelMedium,
             )
             Text(

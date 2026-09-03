@@ -48,7 +48,8 @@ class GetBudgetStatusUseCase(
         return MonthlyBudgetStatus(
             total = BudgetCalculator.calculate(
                 budget = totalBudget,
-                amountUsed = summary.totalExpense,
+                // 月总预算按净支出（支出 − 收入）统计：收入进账会抵扣预算消耗，结余即未用完。
+                amountUsed = summary.totalExpense - summary.totalIncome,
             ),
             categories = categoryUsages,
         )
