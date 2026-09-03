@@ -7,57 +7,87 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.9"
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
 targets:
-  FinanceOSCore:
-    type: framework
-    platform: macOS
-    sources: [Core]
-    settings:
-      base:
-        MACH_O_TYPE: staticlib
-        SKIP_INSTALL: YES
-        GENERATE_INFOPLIST_FILE: YES
   FinanceOS:
     type: application
     platform: macOS
     sources:
-      - MacViews
-      - Assets.xcassets
+      - path: MacViews
+      - path: ../apple-adapter
+      - path: Assets.xcassets
     dependencies:
-      - target: FinanceOSCore
+      - framework: build/shared-framework/FinanceOSShared.framework
       - target: FinanceOSWidget
+        embed: true
     entitlements:
       path: App.entitlements
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.network.client: true
+        com.apple.security.application-groups:
+          - group.com.financeos.ios
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.financeos.mac
         INFOPLIST_FILE: AppInfo.plist
         CODE_SIGN_ENTITLEMENTS: App.entitlements
-        CURRENT_PROJECT_VERSION: "5"
-        MARKETING_VERSION: "0.4.1"
+        CURRENT_PROJECT_VERSION: "8"
+        MARKETING_VERSION: "1.0.0"
         CODE_SIGN_STYLE: Automatic
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        OTHER_LDFLAGS: "$(inherited) -lsqlite3 -lc++"
+    preBuildScripts:
+      - name: Build KMP shared framework
+        script: |
+          export JAVA_HOME="${JAVA_HOME:-/opt/homebrew/opt/openjdk@21}"
+          if [ -d "$SRCROOT/build/shared-framework/FinanceOSShared.framework" ] || [ -d "$SRCROOT/build/shared-framework-widget/FinanceOSShared.framework" ]; then
+            exit 0
+          fi
+          cd "$SRCROOT/.."
+          CONFIGURATION_LOWER="$(echo "$CONFIGURATION" | tr '[:upper:]' '[:lower:]')"
+          ./gradlew ":shared:link${CONFIGURATION}FrameworkMacosArm64" -q
+          rm -rf "$SRCROOT/build/shared-framework"
+          mkdir -p "$SRCROOT/build/shared-framework"
+          cp -R "shared/build/bin/macosArm64/${CONFIGURATION_LOWER}Framework/FinanceOSShared.framework" "$SRCROOT/build/shared-framework/"
+        basedOnDependencyAnalysis: false
   FinanceOSWidget:
     type: app-extension
     platform: macOS
-    sources: [Widget]
+    sources:
+      - path: Widget
+      - path: ../apple-adapter
     dependencies:
-      - target: FinanceOSCore
+      - framework: build/shared-framework/FinanceOSShared.framework
     entitlements:
       path: Widget.entitlements
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.network.client: true
+        com.apple.security.application-groups:
+          - group.com.financeos.ios
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.financeos.mac.widget
         INFOPLIST_FILE: WidgetInfo.plist
         CODE_SIGN_ENTITLEMENTS: Widget.entitlements
-        CURRENT_PROJECT_VERSION: "5"
-        MARKETING_VERSION: "0.4.1"
+        CURRENT_PROJECT_VERSION: "8"
+        MARKETING_VERSION: "1.0.0"
         CODE_SIGN_STYLE: Automatic
         SKIP_INSTALL: YES
         APPLICATION_EXTENSION_API_ONLY: YES
+        OTHER_LDFLAGS: "$(inherited) -lsqlite3 -lc++"
+    preBuildScripts:
+      - name: Build KMP shared framework
+        script: |
+          export JAVA_HOME="${JAVA_HOME:-/opt/homebrew/opt/openjdk@21}"
+          if [ -d "$SRCROOT/build/shared-framework/FinanceOSShared.framework" ] || [ -d "$SRCROOT/build/shared-framework-widget/FinanceOSShared.framework" ]; then
+            exit 0
+          fi
+          cd "$SRCROOT/.."
+          CONFIGURATION_LOWER="$(echo "$CONFIGURATION" | tr '[:upper:]' '[:lower:]')"
+          ./gradlew ":shared:link${CONFIGURATION}FrameworkMacosArm64" -q
+          rm -rf "$SRCROOT/build/shared-framework"
+          mkdir -p "$SRCROOT/build/shared-framework"
+          cp -R "shared/build/bin/macosArm64/${CONFIGURATION_LOWER}Framework/FinanceOSShared.framework" "$SRCROOT/build/shared-framework/"
+        basedOnDependencyAnalysis: false

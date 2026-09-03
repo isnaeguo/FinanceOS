@@ -10,6 +10,7 @@ fun buildFinanceOsDatabase(
     builder: RoomDatabase.Builder<FinanceOsDatabase>,
 ): FinanceOsDatabase = builder
     .setDriver(BundledSQLiteDriver())
+    .addMigrations(FinanceOsMigrations.MIGRATION_1_2)
     .addCallback(DefaultCategoryCallback)
     .build()
 
@@ -18,8 +19,8 @@ private object DefaultCategoryCallback : RoomDatabase.Callback() {
         // onCreate 只在数据库文件首次创建后执行，因此默认分类不会在每次启动时重复插入。
         val statement = connection.prepare(
             """
-            INSERT OR IGNORE INTO categories (id, name, type, icon_key, is_system)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT OR IGNORE INTO categories (id, name, type, icon_key, is_system, updated_at)
+            VALUES (?, ?, ?, ?, ?, 0)
             """.trimIndent(),
         )
 

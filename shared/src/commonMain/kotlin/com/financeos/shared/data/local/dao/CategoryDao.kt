@@ -16,12 +16,18 @@ interface CategoryDao {
     @Query("DELETE FROM categories")
     suspend fun deleteAll()
 
-    @Query("SELECT * FROM categories WHERE id = :id LIMIT 1")
+    /** 按 ID 获取未删除的分类，已删除或不存在时返回 `null`。 */
+    @Query("SELECT * FROM categories WHERE id = :id AND deleted_at IS NULL LIMIT 1")
     suspend fun getById(id: String): CategoryEntity?
 
-    @Query("SELECT * FROM categories ORDER BY id")
+    /** 获取全部未删除的分类。 */
+    @Query("SELECT * FROM categories WHERE deleted_at IS NULL ORDER BY id")
     suspend fun getAll(): List<CategoryEntity>
 
+    /** 获取全部分类（含软删墓碑），仅用于导出、合并与引用校验。 */
     @Query("SELECT * FROM categories ORDER BY id")
+    suspend fun getAllIncludingDeleted(): List<CategoryEntity>
+
+    @Query("SELECT * FROM categories WHERE deleted_at IS NULL ORDER BY id")
     fun observeAll(): Flow<List<CategoryEntity>>
 }

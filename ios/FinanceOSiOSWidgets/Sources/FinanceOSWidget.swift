@@ -36,20 +36,38 @@ struct FinanceOSEntry: TimelineEntry {
 
 struct FinanceOSProvider: TimelineProvider {
     func placeholder(in context: Context) -> FinanceOSEntry {
-        FinanceOSEntry(date: Date(), metrics: sample())
+        FinanceOSEntry(date: Date(), metrics: Self.sample())
     }
 
     func getSnapshot(in context: Context, completion: @escaping (FinanceOSEntry) -> Void) {
-        completion(FinanceOSEntry(date: Date(), metrics: context.isPreview ? sample() : loadMetrics()))
+        Self.computeAsync(isPreview: context.isPreview) { entry in
+            completion(entry)
+        }
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<FinanceOSEntry>) -> Void) {
-        let entry = FinanceOSEntry(date: Date(), metrics: loadMetrics())
-        let next = Calendar.current.date(byAdding: .hour, value: 1, to: Date()) ?? Date().addingTimeInterval(3600)
-        completion(Timeline(entries: [entry], policy: .after(next)))
+        Self.computeAsync { entry in
+            let next = Calendar.current.date(byAdding: .hour, value: 1, to: Date()) ?? Date().addingTimeInterval(3600)
+            completion(Timeline(entries: [entry], policy: .after(next)))
+        }
     }
 
-    private func sample() -> WidgetMetrics {
+    /// 数据直接读取 shared（Room，App Group 内库文件），不再依赖 store.json。
+    private static func computeAsync(isPreview: Bool = false, completion: @escaping (FinanceOSEntry) -> Void) {
+        Task {
+            let metrics: WidgetMetrics?
+            if isPreview {
+                metrics = Self.sample()
+            } else {
+                metrics = await Self.loadRoomMetrics()
+            }
+            await MainActor.run {
+                completion(FinanceOSEntry(date: Date(), metrics: metrics))
+            }
+        }
+    }
+
+    private static func sample() -> WidgetMetrics {
         WidgetMetrics(
             usedMinor: 1862400,
             dailyMinor: 68000,
@@ -62,46 +80,21 @@ struct FinanceOSProvider: TimelineProvider {
         )
     }
 
-    private func loadMetrics() -> WidgetMetrics? {
+    private static func loadRoomMetrics() async -> WidgetMetrics? {
         let calendar = Calendar.current
         let today = Date()
-        let month = BudgetMonth(
-            year: calendar.component(.year, from: today),
-            month: calendar.component(.month, from: today)
-        )
-        let period = month.period(calendar: calendar)
-
-        let url = DefaultStoreLocation().storeURL()
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        guard let snapshot = try? FinanceDataJsonCodec.decode(String(decoding: data, as: UTF8.self)) else { return nil }
-
-        let transactions = snapshot.transactions.filter { period.contains($0.dateTime) }
-        let summary = MonthlySummaryCalculator.calculate(transactions)
-        let totalBudget = snapshot.budgets.first { $0.month == month && $0.categoryId == nil }
-
-        let usage = BudgetCalculator.calculate(budget: totalBudget, amountUsed: summary.totalExpense)
-        let startOfToday = calendar.startOfDay(for: today)
-        let day = calendar.component(.day, from: today)
-        let daily = DailyAvailableBudgetCalculator.calculate(
-            period: period,
-            currentDayOfMonth: day,
-            startOfToday: startOfToday,
-            totalBudget: totalBudget,
-            transactions: transactions
-        )
-
+        guard let loaded = try? await WidgetDataLoader.loadMetrics(now: today) else { return nil }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "zh_CN")
         formatter.dateFormat = "M月d日 更新"
-
         return WidgetMetrics(
-            usedMinor: summary.totalExpense,
-            dailyMinor: daily?.dailyAmount,
-            remainingMinor: usage.amountRemaining,
-            hasBudget: usage.hasBudget,
-            isOver: usage.isOverBudget,
-            monthYear: month.year,
-            monthNumber: month.month,
+            usedMinor: loaded.usedMinor,
+            dailyMinor: loaded.dailyMinor,
+            remainingMinor: loaded.remainingMinor,
+            hasBudget: loaded.hasBudget,
+            isOver: loaded.isOverBudget,
+            monthYear: loaded.month.year,
+            monthNumber: loaded.month.month,
             updatedText: formatter.string(from: today)
         )
     }

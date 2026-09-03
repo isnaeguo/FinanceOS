@@ -18,6 +18,9 @@ interface TransactionRepository {
     /** 获取全部流水。 */
     suspend fun getAll(): List<Transaction>
 
+    /** 持续观察全部流水，使适配层等长期订阅方能与数据库保持一致。 */
+    fun observeAll(): Flow<List<Transaction>>
+
     /** 获取任意半开时间区间内的流水，供趋势等跨月业务使用。 */
     suspend fun getByPeriod(
         startInclusive: Instant,

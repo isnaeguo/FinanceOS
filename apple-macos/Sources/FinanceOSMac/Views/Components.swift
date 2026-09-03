@@ -1,5 +1,4 @@
 import SwiftUI
-import FinanceOSCore
 
 // MARK: - 分类视觉映射
 
@@ -8,7 +7,7 @@ struct CategoryVisual {
     let symbol: String
     let color: Color
 
-    static func resolved(for category: FinanceOSCore.Category?) -> CategoryVisual {
+    static func resolved(for category: Category?) -> CategoryVisual {
         guard let category else {
             return CategoryVisual(symbol: "tag.slash.fill", color: .gray)
         }
@@ -164,7 +163,7 @@ struct StatCard: View {
 // MARK: - 分类图标
 
 struct CategoryIconView: View {
-    let category: FinanceOSCore.Category?
+    let category: Category?
     var size: CGFloat = 32
 
     var body: some View {

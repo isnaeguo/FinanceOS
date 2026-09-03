@@ -35,6 +35,15 @@ kotlin {
         }
     }
 
+    // macOS 与 iOS 复用同一业务内核，同样导出静态 Framework 供 apple-xcode 主工程链接。
+    macosArm64 {
+        binaries.framework {
+            baseName = "FinanceOSShared"
+            isStatic = true
+        }
+    }
+
+
     sourceSets {
         commonMain.dependencies {
             implementation(libs.androidx.room3.runtime)
@@ -53,6 +62,10 @@ kotlin {
 dependencies {
     add("kspAndroid", libs.androidx.room3.compiler)
     add("kspJvm", libs.androidx.room3.compiler)
+    // Native target 同样需要 Room 编译器生成 FinanceOsDatabaseConstructor 的 actual，否则 iOS 编译失败。
+    add("kspIosArm64", libs.androidx.room3.compiler)
+    add("kspIosSimulatorArm64", libs.androidx.room3.compiler)
+    add("kspMacosArm64", libs.androidx.room3.compiler)
 }
 
 room3 {

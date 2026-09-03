@@ -26,6 +26,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -53,6 +57,7 @@ internal fun LanShareRoute(viewModel: LanShareViewModel) {
         snackbarHostState = snackbarHostState,
         onPortTextChange = viewModel::onPortTextChange,
         onTargetHostChange = viewModel::onTargetHostChange,
+        onClientPairingCodeChange = viewModel::onClientPairingCodeChange,
         onToggleServer = viewModel::toggleServer,
         onPullSnapshot = viewModel::pullSnapshot,
         onPushSnapshot = viewModel::pushSnapshot,
@@ -66,6 +71,7 @@ internal fun LanShareScreen(
     snackbarHostState: SnackbarHostState,
     onPortTextChange: (String) -> Unit,
     onTargetHostChange: (String) -> Unit,
+    onClientPairingCodeChange: (String) -> Unit,
     onToggleServer: () -> Unit,
     onPullSnapshot: () -> Unit,
     onPushSnapshot: () -> Unit,
@@ -126,6 +132,32 @@ internal fun LanShareScreen(
                     },
                 )
             }
+            if (uiState.serverRunning && uiState.pairingCode.isNotEmpty()) {
+                item {
+                    StatusCard(title = "本次配对码", body = "对方需输入该 10 位配对码才能同步；停止接收后即失效。")
+                }
+                item {
+                    val clipboard = LocalClipboardManager.current
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = uiState.pairingCode,
+                            modifier = Modifier.weight(1f),
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.titleLarge,
+                            letterSpacing = 4.sp,
+                        )
+                        Button(onClick = {
+                            clipboard.setText(AnnotatedString(uiState.pairingCode))
+                        }) {
+                            Text("复制")
+                        }
+                    }
+                }
+            }
             item { HorizontalDivider() }
             item { SectionLabel("同步操作") }
             item {
@@ -138,6 +170,17 @@ internal fun LanShareScreen(
                     supportingText = { Text("例如 192.168.1.5，需对方共享服务已启动") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                )
+            }
+            item {
+                OutlinedTextField(
+                    value = uiState.clientPairingCode,
+                    onValueChange = onClientPairingCodeChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !uiState.isBusy,
+                    label = { Text("对方配对码") },
+                    supportingText = { Text("请输入对方共享服务展示的 10 位配对码") },
+                    singleLine = true,
                 )
             }
             item {

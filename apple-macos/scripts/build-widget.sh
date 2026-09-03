@@ -11,7 +11,7 @@ WIDGET_SOURCES="Sources/FinanceOSWidgetWidgets"
 DOMAIN_SOURCES="Sources/FinanceOSCore/Domain"
 BUILD_DIR=".build/widget"
 APPEX="$BUILD_DIR/$WIDGET_NAME.appex"
-VERSION="0.4.2"
+VERSION="1.0.0"
 
 # 1) 编译为可执行文件（-parse-as-library：让 @main WidgetBundle 生效）
 rm -rf "$BUILD_DIR"

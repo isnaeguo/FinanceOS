@@ -10,28 +10,25 @@
 		003C95449D822A9FC8B15CEB /* TransactionsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81E4846FCAF413F4A44E2548 /* TransactionsTab.swift */; };
 		07103180FB462B5E26686C49 /* AddTransactionSheetContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79D7D8471E71FC1A89354050 /* AddTransactionSheetContent.swift */; };
 		11EA9D2C11915856952F1238 /* FinanceOSiOSWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 81F061E2CA877EF1B56E0F1D /* FinanceOSiOSWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		34D309669529F1DD424591E5 /* XlsxImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB150B0445295805713997AC /* XlsxImport.swift */; };
-		3A44FA112A99C3C54F3871DB /* Transfers.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6407B51B2093098C4D3D798 /* Transfers.swift */; };
-		3C92072030B280E687BCCDA7 /* FinanceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8ABF2C976AB5AFB39FDC40B /* FinanceStore.swift */; };
+		14CCE8B178663847C4934A16 /* FinanceStoreModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B92E8FAE6626941B0271B321 /* FinanceStoreModels.swift */; };
+		28FBD5F6D04AF823126C7869 /* FinanceStoreModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B92E8FAE6626941B0271B321 /* FinanceStoreModels.swift */; };
+		32F04EA3E2CA7C33283135AB /* FinanceStoreKMPConversion.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1E7ED0BF41E3D70AA86A8A6 /* FinanceStoreKMPConversion.swift */; };
 		436F00FDAC29C33B0834623F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0F2D0DDAD68A28B893A95D82 /* Assets.xcassets */; };
-		5EF840CBD6D6B5F78AB0D81F /* FlexibleSpreadsheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 580A288211ED5559C3CC78BD /* FlexibleSpreadsheet.swift */; };
+		5687B4D6EE23D2981D8B58D5 /* FinanceStoreKMPConversion.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1E7ED0BF41E3D70AA86A8A6 /* FinanceStoreKMPConversion.swift */; };
+		5AD9C15AB391F14303D4243C /* WidgetDataLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C5C9D8564BC2CDA62AA641 /* WidgetDataLoader.swift */; };
 		66F7D4F7406C3A718D9CE26A /* HomeTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = D06612F5BF263E88779019C2 /* HomeTab.swift */; };
 		67B79DECBEE8C15AE1C0A214 /* DataTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06A929083C5CAC05137FAD14 /* DataTab.swift */; };
-		6A0DE8E232CE4628481B9026 /* FinanceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8ABF2C976AB5AFB39FDC40B /* FinanceStore.swift */; };
+		6A0F969A773F41CA4C8BECBB /* FinanceOSShared.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2B9DB85D01527BB453B7B964 /* FinanceOSShared.framework */; };
 		6DED211F7ACE740301F6248B /* Shared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E26D547D8AB1AAD71DDD6D8 /* Shared.swift */; };
-		76755C7F4213E10A42328402 /* FlexibleSpreadsheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 580A288211ED5559C3CC78BD /* FlexibleSpreadsheet.swift */; };
-		7E0F9EA490DF02C53CB1F3B7 /* Calculations.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFB84764483B19D84D15287E /* Calculations.swift */; };
-		8FA1938A1F106ECD409ED176 /* Calculations.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFB84764483B19D84D15287E /* Calculations.swift */; };
-		8FDAF9330AC3878B697B3CD2 /* Transfers.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6407B51B2093098C4D3D798 /* Transfers.swift */; };
+		9DAB7303228F6806D1A2FA6C /* WidgetDataLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C5C9D8564BC2CDA62AA641 /* WidgetDataLoader.swift */; };
 		A3C144A8B57EB355FA196066 /* FinanceOSiOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0564271F3FFEE4D2698B7D7 /* FinanceOSiOSApp.swift */; };
-		A8CF60E4DCE78F54768673EB /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06D2734DA8ABD31E94E66463 /* Models.swift */; };
-		B0F05BD6E0C7F05218F044C1 /* Money.swift in Sources */ = {isa = PBXBuildFile; fileRef = 269FA8878A15FCA68BB32529 /* Money.swift */; };
+		A3D552DAB737F859058B893B /* FinanceStoreAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 295D099A4D8242B1FD04C648 /* FinanceStoreAdapter.swift */; };
+		BDB3F8D1FA862342F5F8A6EE /* FinanceOSShared.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9196B208E145C2895D38EB88 /* FinanceOSShared.framework */; };
 		C1EC66BF9F4733541DE15DF4 /* BudgetTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D171E94BB19B16866FBE16C /* BudgetTab.swift */; };
-		C3EBC9B43541A9526CE14827 /* Money.swift in Sources */ = {isa = PBXBuildFile; fileRef = 269FA8878A15FCA68BB32529 /* Money.swift */; };
 		CD4F9A301407690D8B175ED1 /* FinanceOSWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49832B69A31F5A70F6F45885 /* FinanceOSWidget.swift */; };
 		D395C52D02EC527D17E69237 /* LanShareView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AA77A15E95589ADA75A9933 /* LanShareView.swift */; };
-		F09DA0B1C18E89FD98AF560F /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06D2734DA8ABD31E94E66463 /* Models.swift */; };
-		F2CBBED7486F670236C66D95 /* XlsxImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB150B0445295805713997AC /* XlsxImport.swift */; };
+		D854ED8481A098D424B59F45 /* FinanceOSShared.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 2B9DB85D01527BB453B7B964 /* FinanceOSShared.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		F5605B8D019C54DFC1D09DA9 /* FinanceStoreAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 295D099A4D8242B1FD04C648 /* FinanceStoreAdapter.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -56,42 +53,87 @@
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		4F1AC37ABF08A464D7A422E9 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				D854ED8481A098D424B59F45 /* FinanceOSShared.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		04C5C9D8564BC2CDA62AA641 /* WidgetDataLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetDataLoader.swift; sourceTree = "<group>"; };
 		06A929083C5CAC05137FAD14 /* DataTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataTab.swift; sourceTree = "<group>"; };
-		06D2734DA8ABD31E94E66463 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		0F2D0DDAD68A28B893A95D82 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		269FA8878A15FCA68BB32529 /* Money.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Money.swift; sourceTree = "<group>"; };
+		295D099A4D8242B1FD04C648 /* FinanceStoreAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinanceStoreAdapter.swift; sourceTree = "<group>"; };
+		2B9DB85D01527BB453B7B964 /* FinanceOSShared.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = FinanceOSShared.framework; path = "build/shared-framework/FinanceOSShared.framework"; sourceTree = "<group>"; };
 		3079D1AE1A7D41BAA14DD7BB /* FinanceOSiOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = FinanceOSiOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		49832B69A31F5A70F6F45885 /* FinanceOSWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinanceOSWidget.swift; sourceTree = "<group>"; };
 		4AA77A15E95589ADA75A9933 /* LanShareView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanShareView.swift; sourceTree = "<group>"; };
-		580A288211ED5559C3CC78BD /* FlexibleSpreadsheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlexibleSpreadsheet.swift; sourceTree = "<group>"; };
 		5E26D547D8AB1AAD71DDD6D8 /* Shared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared.swift; sourceTree = "<group>"; };
 		79D7D8471E71FC1A89354050 /* AddTransactionSheetContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddTransactionSheetContent.swift; sourceTree = "<group>"; };
 		81E4846FCAF413F4A44E2548 /* TransactionsTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionsTab.swift; sourceTree = "<group>"; };
 		81F061E2CA877EF1B56E0F1D /* FinanceOSiOSWidget.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = FinanceOSiOSWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		9196B208E145C2895D38EB88 /* FinanceOSShared.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = FinanceOSShared.framework; path = "build/shared-framework-widget/FinanceOSShared.framework"; sourceTree = "<group>"; };
 		9D171E94BB19B16866FBE16C /* BudgetTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BudgetTab.swift; sourceTree = "<group>"; };
 		B0564271F3FFEE4D2698B7D7 /* FinanceOSiOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinanceOSiOSApp.swift; sourceTree = "<group>"; };
-		B8ABF2C976AB5AFB39FDC40B /* FinanceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinanceStore.swift; sourceTree = "<group>"; };
+		B92E8FAE6626941B0271B321 /* FinanceStoreModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinanceStoreModels.swift; sourceTree = "<group>"; };
+		C1E7ED0BF41E3D70AA86A8A6 /* FinanceStoreKMPConversion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinanceStoreKMPConversion.swift; sourceTree = "<group>"; };
 		D06612F5BF263E88779019C2 /* HomeTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeTab.swift; sourceTree = "<group>"; };
-		D6407B51B2093098C4D3D798 /* Transfers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transfers.swift; sourceTree = "<group>"; };
-		DFB84764483B19D84D15287E /* Calculations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Calculations.swift; sourceTree = "<group>"; };
-		EB150B0445295805713997AC /* XlsxImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XlsxImport.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFrameworksBuildPhase section */
+		3E879A21136D49EC558B5F01 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BDB3F8D1FA862342F5F8A6EE /* FinanceOSShared.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CC35C1D735F18B002220DFB1 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6A0F969A773F41CA4C8BECBB /* FinanceOSShared.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
 /* Begin PBXGroup section */
-		153676CDA9E5216C1BB3C174 /* Domain */ = {
+		3746E9AC818FB5C60C97B901 /* apple-adapter */ = {
 			isa = PBXGroup;
 			children = (
-				DFB84764483B19D84D15287E /* Calculations.swift */,
-				580A288211ED5559C3CC78BD /* FlexibleSpreadsheet.swift */,
-				06D2734DA8ABD31E94E66463 /* Models.swift */,
-				269FA8878A15FCA68BB32529 /* Money.swift */,
-				D6407B51B2093098C4D3D798 /* Transfers.swift */,
-				EB150B0445295805713997AC /* XlsxImport.swift */,
+				295D099A4D8242B1FD04C648 /* FinanceStoreAdapter.swift */,
+				C1E7ED0BF41E3D70AA86A8A6 /* FinanceStoreKMPConversion.swift */,
+				B92E8FAE6626941B0271B321 /* FinanceStoreModels.swift */,
+				04C5C9D8564BC2CDA62AA641 /* WidgetDataLoader.swift */,
 			);
-			path = Domain;
+			path = "apple-adapter";
+			sourceTree = "<group>";
+		};
+		4937888615FD4D4BB1245122 /* FinanceOS */ = {
+			isa = PBXGroup;
+			children = (
+				3746E9AC818FB5C60C97B901 /* apple-adapter */,
+			);
+			name = FinanceOS;
+			path = ../..;
+			sourceTree = "<group>";
+		};
+		72969F3AB85B3C1356ECBC8C /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				9196B208E145C2895D38EB88 /* FinanceOSShared.framework */,
+				2B9DB85D01527BB453B7B964 /* FinanceOSShared.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 		7BB5D0A9223D8EF9B6F907F3 /* Support */ = {
@@ -113,14 +155,6 @@
 				81E4846FCAF413F4A44E2548 /* TransactionsTab.swift */,
 			);
 			path = Views;
-			sourceTree = "<group>";
-		};
-		A20558EE2BAF93824FDF369B /* Store */ = {
-			isa = PBXGroup;
-			children = (
-				B8ABF2C976AB5AFB39FDC40B /* FinanceStore.swift */,
-			);
-			path = Store;
 			sourceTree = "<group>";
 		};
 		B82C94ADD2E9EDBB357C0206 /* Products */ = {
@@ -154,20 +188,12 @@
 			isa = PBXGroup;
 			children = (
 				0F2D0DDAD68A28B893A95D82 /* Assets.xcassets */,
-				FE27572467E51C55755D3F59 /* ExternalCore */,
 				BE97F3FBF469F1B85A3FFF05 /* ExternalWidgetSources */,
+				4937888615FD4D4BB1245122 /* FinanceOS */,
 				C6ED14B50A432A21DBE2F0FE /* Sources */,
+				72969F3AB85B3C1356ECBC8C /* Frameworks */,
 				B82C94ADD2E9EDBB357C0206 /* Products */,
 			);
-			sourceTree = "<group>";
-		};
-		FE27572467E51C55755D3F59 /* ExternalCore */ = {
-			isa = PBXGroup;
-			children = (
-				153676CDA9E5216C1BB3C174 /* Domain */,
-				A20558EE2BAF93824FDF369B /* Store */,
-			);
-			path = ExternalCore;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -177,9 +203,12 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = CB38099A8312D4D175CDEC9C /* Build configuration list for PBXNativeTarget "FinanceOSiOS" */;
 			buildPhases = (
+				8848C8D3C321985151EDB202 /* Build KMP shared framework */,
 				D313737546E5FEF173BFC4BC /* Sources */,
 				E531455055FF830AC96968E3 /* Resources */,
+				CC35C1D735F18B002220DFB1 /* Frameworks */,
 				0B2E7EBE5D5FC2DD87A28917 /* Embed Foundation Extensions */,
+				4F1AC37ABF08A464D7A422E9 /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
@@ -197,7 +226,9 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = EE7A3462DDECF0C8EAFA330E /* Build configuration list for PBXNativeTarget "FinanceOSiOSWidget" */;
 			buildPhases = (
+				6749EF483E029DF8DA1017F9 /* Build KMP shared framework */,
 				266CFC9D2808613031F4A7CB /* Sources */,
+				3E879A21136D49EC558B5F01 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -258,19 +289,57 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		6749EF483E029DF8DA1017F9 /* Build KMP shared framework */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build KMP shared framework";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "export JAVA_HOME=\"${JAVA_HOME:-/opt/homebrew/opt/openjdk@21}\"\nif [ -d \"$SRCROOT/build/shared-framework-widget/FinanceOSShared.framework\" ]; then\n  exit 0\nfi\ncd \"$SRCROOT/../..\"\nCONFIGURATION_LOWER=\"$(echo \"$CONFIGURATION\" | tr '[:upper:]' '[:lower:]')\"\nif [[ \"$SDK_NAME\" == iphonesimulator* ]]; then\n  TARGET_KIND=\"IosSimulatorArm64\"\nelse\n  TARGET_KIND=\"IosArm64\"\nfi\n./gradlew \":shared:link${CONFIGURATION}Framework${TARGET_KIND}\" -q\nrm -rf \"$SRCROOT/build/shared-framework-widget\"\nmkdir -p \"$SRCROOT/build/shared-framework-widget\"\nif [[ \"$SDK_NAME\" == iphonesimulator* ]]; then\n  cp -R \"shared/build/bin/iosSimulatorArm64/${CONFIGURATION_LOWER}Framework/FinanceOSShared.framework\" \"$SRCROOT/build/shared-framework/\"\nelse\n  cp -R \"shared/build/bin/iosArm64/${CONFIGURATION_LOWER}Framework/FinanceOSShared.framework\" \"$SRCROOT/build/shared-framework/\"\nfi\n";
+		};
+		8848C8D3C321985151EDB202 /* Build KMP shared framework */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build KMP shared framework";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "export JAVA_HOME=\"${JAVA_HOME:-/opt/homebrew/opt/openjdk@21}\"\nif [ -d \"$SRCROOT/build/shared-framework/FinanceOSShared.framework\" ] || [ -d \"$SRCROOT/build/shared-framework-widget/FinanceOSShared.framework\" ]; then\n  exit 0\nfi\ncd \"$SRCROOT/../..\"\nCONFIGURATION_LOWER=\"$(echo \"$CONFIGURATION\" | tr '[:upper:]' '[:lower:]')\"\nif [[ \"$SDK_NAME\" == iphonesimulator* ]]; then\n  TARGET_KIND=\"IosSimulatorArm64\"\nelse\n  TARGET_KIND=\"IosArm64\"\nfi\n./gradlew \":shared:link${CONFIGURATION}Framework${TARGET_KIND}\" -q\nrm -rf \"$SRCROOT/build/shared-framework\"\nmkdir -p \"$SRCROOT/build/shared-framework\"\nif [[ \"$SDK_NAME\" == iphonesimulator* ]]; then\n  cp -R \"shared/build/bin/iosSimulatorArm64/${CONFIGURATION_LOWER}Framework/FinanceOSShared.framework\" \"$SRCROOT/build/shared-framework/\"\nelse\n  cp -R \"shared/build/bin/iosArm64/${CONFIGURATION_LOWER}Framework/FinanceOSShared.framework\" \"$SRCROOT/build/shared-framework/\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		266CFC9D2808613031F4A7CB /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				8FA1938A1F106ECD409ED176 /* Calculations.swift in Sources */,
 				CD4F9A301407690D8B175ED1 /* FinanceOSWidget.swift in Sources */,
-				6A0DE8E232CE4628481B9026 /* FinanceStore.swift in Sources */,
-				5EF840CBD6D6B5F78AB0D81F /* FlexibleSpreadsheet.swift in Sources */,
-				F09DA0B1C18E89FD98AF560F /* Models.swift in Sources */,
-				C3EBC9B43541A9526CE14827 /* Money.swift in Sources */,
-				8FDAF9330AC3878B697B3CD2 /* Transfers.swift in Sources */,
-				34D309669529F1DD424591E5 /* XlsxImport.swift in Sources */,
+				A3D552DAB737F859058B893B /* FinanceStoreAdapter.swift in Sources */,
+				32F04EA3E2CA7C33283135AB /* FinanceStoreKMPConversion.swift in Sources */,
+				28FBD5F6D04AF823126C7869 /* FinanceStoreModels.swift in Sources */,
+				5AD9C15AB391F14303D4243C /* WidgetDataLoader.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -280,19 +349,16 @@
 			files = (
 				07103180FB462B5E26686C49 /* AddTransactionSheetContent.swift in Sources */,
 				C1EC66BF9F4733541DE15DF4 /* BudgetTab.swift in Sources */,
-				7E0F9EA490DF02C53CB1F3B7 /* Calculations.swift in Sources */,
 				67B79DECBEE8C15AE1C0A214 /* DataTab.swift in Sources */,
 				A3C144A8B57EB355FA196066 /* FinanceOSiOSApp.swift in Sources */,
-				3C92072030B280E687BCCDA7 /* FinanceStore.swift in Sources */,
-				76755C7F4213E10A42328402 /* FlexibleSpreadsheet.swift in Sources */,
+				F5605B8D019C54DFC1D09DA9 /* FinanceStoreAdapter.swift in Sources */,
+				5687B4D6EE23D2981D8B58D5 /* FinanceStoreKMPConversion.swift in Sources */,
+				14CCE8B178663847C4934A16 /* FinanceStoreModels.swift in Sources */,
 				66F7D4F7406C3A718D9CE26A /* HomeTab.swift in Sources */,
 				D395C52D02EC527D17E69237 /* LanShareView.swift in Sources */,
-				A8CF60E4DCE78F54768673EB /* Models.swift in Sources */,
-				B0F05BD6E0C7F05218F044C1 /* Money.swift in Sources */,
 				6DED211F7ACE740301F6248B /* Shared.swift in Sources */,
 				003C95449D822A9FC8B15CEB /* TransactionsTab.swift in Sources */,
-				3A44FA112A99C3C54F3871DB /* Transfers.swift in Sources */,
-				F2CBBED7486F670236C66D95 /* XlsxImport.swift in Sources */,
+				9DAB7303228F6806D1A2FA6C /* WidgetDataLoader.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -313,14 +379,20 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = ExternalWidgetSupport/Widget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 8;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/build/shared-framework-widget",
+					"\"build/shared-framework-widget\"",
+				);
 				INFOPLIST_FILE = ExternalWidgetSupport/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 0.4.2;
+				MARKETING_VERSION = 1.0.0;
+				OTHER_LDFLAGS = "$(inherited) -lsqlite3 -lc++";
 				PRODUCT_BUNDLE_IDENTIFIER = com.financeos.ios.widget;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -335,13 +407,18 @@
 				CODE_SIGN_ENTITLEMENTS = App.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 8;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"build/shared-framework\"",
+				);
 				INFOPLIST_FILE = Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.4.2;
+				MARKETING_VERSION = 1.0.0;
+				OTHER_LDFLAGS = "$(inherited) -lsqlite3 -lc++";
 				PRODUCT_BUNDLE_IDENTIFIER = com.financeos.ios;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -385,6 +462,7 @@
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -442,6 +520,7 @@
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -475,14 +554,20 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = ExternalWidgetSupport/Widget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 8;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/build/shared-framework-widget",
+					"\"build/shared-framework-widget\"",
+				);
 				INFOPLIST_FILE = ExternalWidgetSupport/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 0.4.2;
+				MARKETING_VERSION = 1.0.0;
+				OTHER_LDFLAGS = "$(inherited) -lsqlite3 -lc++";
 				PRODUCT_BUNDLE_IDENTIFIER = com.financeos.ios.widget;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -497,13 +582,18 @@
 				CODE_SIGN_ENTITLEMENTS = App.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 8;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"build/shared-framework\"",
+				);
 				INFOPLIST_FILE = Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.4.2;
+				MARKETING_VERSION = 1.0.0;
+				OTHER_LDFLAGS = "$(inherited) -lsqlite3 -lc++";
 				PRODUCT_BUNDLE_IDENTIFIER = com.financeos.ios;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";

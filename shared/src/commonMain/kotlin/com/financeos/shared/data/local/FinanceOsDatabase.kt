@@ -18,7 +18,8 @@ import com.financeos.shared.data.local.entity.TransactionEntity
         CategoryEntity::class,
         BudgetEntity::class,
     ],
-    version = 1,
+    // v2：三张表新增同步元数据列 updated_at / deleted_at，见 FinanceOsMigrations。
+    version = 2,
     exportSchema = true,
 )
 @ConstructedBy(FinanceOsDatabaseConstructor::class)

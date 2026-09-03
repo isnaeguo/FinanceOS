@@ -1,9 +1,8 @@
 import SwiftUI
-import FinanceOSCore
 
 struct TransactionRow: View {
-    let transaction: FinanceOSCore.Transaction
-    let category: FinanceOSCore.Category?
+    let transaction: Transaction
+    let category: Category?
     var showsTime: Bool = true
 
     var body: some View {
@@ -100,8 +99,8 @@ struct TransactionsView: View {
     @State private var categoryFilter: String?
     @State private var accountFilter: AccountFilter = .all
     @State private var amountSort: AmountSort = .timeDesc
-    @State private var pendingDelete: FinanceOSCore.Transaction?
-    @State private var editingTransaction: FinanceOSCore.Transaction?
+    @State private var pendingDelete: Transaction?
+    @State private var editingTransaction: Transaction?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -312,14 +311,14 @@ struct TransactionsView: View {
 
     private struct DayGroup {
         let day: Date
-        let items: [FinanceOSCore.Transaction]
+        let items: [Transaction]
     }
 
     private var filtersActive: Bool {
         !searchText.isEmpty || typeFilter != nil || categoryFilter != nil || accountFilter != .all
     }
 
-    private var filtered: [FinanceOSCore.Transaction] {
+    private var filtered: [Transaction] {
         let period = selectedMonth.period()
         return store.monthlyTransactions(in: period).filter { transaction in
             if let typeFilter, transaction.type != typeFilter { return false }
@@ -340,7 +339,7 @@ struct TransactionsView: View {
 
     private var groupedDays: [DayGroup] {
         let calendar = Calendar.current
-        var buckets: [Date: [FinanceOSCore.Transaction]] = [:]
+        var buckets: [Date: [Transaction]] = [:]
         for transaction in filtered {
             let day = calendar.startOfDay(for: transaction.dateTime)
             buckets[day, default: []].append(transaction)
@@ -351,7 +350,7 @@ struct TransactionsView: View {
     }
 
     /// 组内排序：默认按时间倒序；按金额时先比较金额，金额相等再按时间倒序。
-    private func amountSortComparator(_ lhs: FinanceOSCore.Transaction, _ rhs: FinanceOSCore.Transaction) -> Bool {
+    private func amountSortComparator(_ lhs: Transaction, _ rhs: Transaction) -> Bool {
         switch amountSort {
         case .timeDesc:
             return lhs.dateTime > rhs.dateTime

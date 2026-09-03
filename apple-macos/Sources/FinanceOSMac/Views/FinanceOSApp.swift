@@ -1,5 +1,4 @@
 import SwiftUI
-import FinanceOSCore
 
 /// 跨页面的轻量路由状态，供菜单栏命令触发各页面的动作。
 @Observable

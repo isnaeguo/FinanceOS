@@ -23,6 +23,9 @@ internal fun Transaction.toEntity() = TransactionEntity(
     // Instant 统一转换为 Unix 毫秒，避免数据库依赖平台日期类型。
     dateTimeEpochMillis = dateTime.toEpochMilliseconds(),
     note = note,
+    // 同步元数据原样往返，冲突裁决和删除传播依赖这两个字段不丢失。
+    updatedAt = updatedAt,
+    deletedAt = deletedAt,
 )
 
 internal fun TransactionEntity.toDomain() = Transaction(
@@ -34,6 +37,8 @@ internal fun TransactionEntity.toDomain() = Transaction(
     // 从同一 Unix 毫秒值恢复 Instant，保证跨平台时间语义一致。
     dateTime = Instant.fromEpochMilliseconds(dateTimeEpochMillis),
     note = note,
+    updatedAt = updatedAt,
+    deletedAt = deletedAt,
 )
 
 internal fun CategoryEntity.toDomain() = Category(
@@ -42,6 +47,8 @@ internal fun CategoryEntity.toDomain() = Category(
     type = CategoryType.valueOf(type),
     iconKey = iconKey,
     isSystem = isSystem,
+    updatedAt = updatedAt,
+    deletedAt = deletedAt,
 )
 
 internal fun Category.toEntity() = CategoryEntity(
@@ -51,6 +58,8 @@ internal fun Category.toEntity() = CategoryEntity(
     // iconKey 是跨平台语义键，数据库不保存 Android Drawable ID。
     iconKey = iconKey,
     isSystem = isSystem,
+    updatedAt = updatedAt,
+    deletedAt = deletedAt,
 )
 
 internal fun Budget.toEntity() = BudgetEntity(
@@ -61,6 +70,8 @@ internal fun Budget.toEntity() = BudgetEntity(
     categoryKey = categoryId ?: TOTAL_BUDGET_CATEGORY_KEY,
     // 与 Transaction 相同，预算金额始终以最小货币单位原样持久化。
     amountLimitMinor = amountLimit,
+    updatedAt = updatedAt,
+    deletedAt = deletedAt,
 )
 
 internal fun BudgetEntity.toDomain() = Budget(
@@ -69,6 +80,8 @@ internal fun BudgetEntity.toDomain() = Budget(
     amountLimit = amountLimitMinor,
     // 空串只属于数据库存储约定，Domain 仍使用 null 表达月总预算。
     categoryId = categoryKey.ifEmpty { null },
+    updatedAt = updatedAt,
+    deletedAt = deletedAt,
 )
 
 internal fun categoryKey(categoryId: String?): String = categoryId ?: TOTAL_BUDGET_CATEGORY_KEY

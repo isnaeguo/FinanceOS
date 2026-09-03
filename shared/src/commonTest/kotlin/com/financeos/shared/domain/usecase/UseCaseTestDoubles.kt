@@ -34,6 +34,8 @@ internal class FakeTransactionRepository(
 
     override suspend fun getAll(): List<Transaction> = transactions.toList()
 
+    override fun observeAll(): Flow<List<Transaction>> = transactionUpdates
+
     override suspend fun getByPeriod(
         startInclusive: Instant,
         endExclusive: Instant,
@@ -87,6 +89,8 @@ internal class FakeBudgetRepository(
 
     override suspend fun getByMonth(month: BudgetMonth): List<Budget> =
         budgets.filter { it.month == month }
+
+    override fun observeAll(): Flow<List<Budget>> = budgetUpdates
 
     override fun observeByMonth(month: BudgetMonth): Flow<List<Budget>> =
         budgetUpdates.map { current -> current.filter { it.month == month } }

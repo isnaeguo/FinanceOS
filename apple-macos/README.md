@@ -60,3 +60,12 @@ open dist/FinanceOS.app
 - 移植自 FinanceOS `shared` 的类与函数逐一对齐（见 Tests/FinanceOSChecks/Runner.swift）。
 - 本机无完整 Xcode，`.app` 采用 Command Line Tools 的 `swift build` + 手工组装与 ad-hoc 签名生成；
   如需正式分发请用 Xcode 归档并替换签名与图标资源。
+
+## 工程结构变更（schema v2 内核升级）
+- 业务内核迁至 KMP `shared`（macosArm64 静态框架 FinanceOSShared）；macOS 主工程为 `../apple-xcode`
+  （xcodebuild）。本 SwiftPM 工程只保留 `FinanceOSChecks` 冒烟复验：
+  `./scripts/make-xcframework.sh && swift run`。
+- 旧 Swift 领域层 `FinanceOSCore` 已移除；视图层保留在 `Sources/FinanceOSMac/Views`（由 apple-xcode 经
+  symlink 编译），仅数据来源替换为 FinanceStoreAdapter（Room）。
+- 小组件与 App 直接读取 App Group 内 Room 库文件（`group.com.financeos.ios`），不再依赖 store.json。
+- 打包：`scripts/make-app.sh`（Release）/ `make-app-debug.sh`（Debug）现调用 xcodebuild。

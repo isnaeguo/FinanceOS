@@ -34,6 +34,8 @@ class FinanceOsApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // shared 局域网同步的 Android 存取需要 Application context。
+        com.financeos.shared.lansync.AppContextHolder.context = applicationContext
         // 数据变更后广播刷新主屏小组件，避免等待系统 30 分钟周期。
         com.financeos.app.widget.WidgetRefresher.ensure(this)
     }

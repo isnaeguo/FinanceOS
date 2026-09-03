@@ -20,13 +20,24 @@ interface BudgetDao {
     @Query("DELETE FROM budgets")
     suspend fun deleteAll()
 
-    @Query("SELECT * FROM budgets ORDER BY year, month, category_key")
+    /** 获取全部未删除的预算。 */
+    @Query("SELECT * FROM budgets WHERE deleted_at IS NULL ORDER BY year, month, category_key")
     suspend fun getAll(): List<BudgetEntity>
 
+    /** 观察全部未删除的预算，供跨端适配层把响应式查询接到平台状态上。 */
+    @Query("SELECT * FROM budgets WHERE deleted_at IS NULL ORDER BY year, month, category_key")
+    fun observeAll(): Flow<List<BudgetEntity>>
+
+    /** 获取全部预算（含软删墓碑），仅用于导出与合并。 */
+    @Query("SELECT * FROM budgets ORDER BY year, month, category_key")
+    suspend fun getAllIncludingDeleted(): List<BudgetEntity>
+
+    /** 获取指定月份和分类的未删除预算。 */
     @Query(
         """
         SELECT * FROM budgets
-        WHERE year = :year AND month = :month AND category_key = :categoryKey
+        WHERE deleted_at IS NULL
+          AND year = :year AND month = :month AND category_key = :categoryKey
         LIMIT 1
         """,
     )
@@ -36,14 +47,29 @@ interface BudgetDao {
         categoryKey: String,
     ): BudgetEntity?
 
-    @Query("SELECT * FROM budgets WHERE year = :year AND month = :month ORDER BY category_key")
+    /** 获取指定月份的全部未删除预算。 */
+    @Query(
+        """
+        SELECT * FROM budgets
+        WHERE deleted_at IS NULL
+          AND year = :year AND month = :month
+        ORDER BY category_key
+        """,
+    )
     suspend fun getByMonth(
         year: Int,
         month: Int,
     ): List<BudgetEntity>
 
     /** 预算表变化后重新发出指定月份的真实结果。 */
-    @Query("SELECT * FROM budgets WHERE year = :year AND month = :month ORDER BY category_key")
+    @Query(
+        """
+        SELECT * FROM budgets
+        WHERE deleted_at IS NULL
+          AND year = :year AND month = :month
+        ORDER BY category_key
+        """,
+    )
     fun observeByMonth(
         year: Int,
         month: Int,

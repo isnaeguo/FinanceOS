@@ -11,6 +11,7 @@ import com.financeos.shared.domain.model.DefaultCategories
 import com.financeos.shared.domain.model.FinanceDataSnapshot
 import com.financeos.shared.domain.model.Transaction
 import com.financeos.shared.domain.model.TransactionType
+import com.financeos.shared.domain.time.EpochClock
 import com.financeos.shared.domain.usecase.AddTransactionCommand
 import com.financeos.shared.domain.usecase.AddTransactionUseCase
 import java.nio.file.Files
@@ -27,6 +28,9 @@ import kotlin.test.assertTrue
 import kotlin.time.Instant
 
 class LocalRepositoryTest {
+    /** 固定时钟使同步元数据可精确断言。 */
+    private val fixedClock = EpochClock { FIXED_NOW_MILLIS }
+
     @Test
     fun addAndDeleteTransactionPersistAcrossDatabaseReopen() = runTest {
         val directory = Files.createTempDirectory("financeos-room-test").toFile()
@@ -41,6 +45,7 @@ class LocalRepositoryTest {
             id = "budget-2026-08",
             month = BudgetMonth(2026, 8),
             amountLimit = 300_000L,
+            updatedAt = FIXED_NOW_MILLIS,
         )
         val updatedBudget = originalBudget.copy(amountLimit = 350_000L)
         val categoryBudget = Budget(
@@ -48,14 +53,18 @@ class LocalRepositoryTest {
             month = BudgetMonth(2026, 8),
             amountLimit = 80_000L,
             categoryId = "system-food",
+            updatedAt = FIXED_NOW_MILLIS,
         )
 
         try {
             val firstDatabase = openFileDatabase(databaseFile.absolutePath)
             try {
-                val transactionRepository = LocalTransactionRepository(firstDatabase.transactionDao())
+                val transactionRepository = LocalTransactionRepository(
+                    firstDatabase.transactionDao(),
+                    fixedClock,
+                )
                 val categoryRepository = LocalCategoryRepository(firstDatabase.categoryDao())
-                AddTransactionUseCase(transactionRepository, categoryRepository)(
+                AddTransactionUseCase(transactionRepository, categoryRepository, fixedClock)(
                     AddTransactionCommand(
                         id = transaction.id,
                         amount = transaction.amount,
@@ -66,7 +75,7 @@ class LocalRepositoryTest {
                         note = transaction.note,
                     ),
                 )
-                val budgetRepository = LocalBudgetRepository(firstDatabase.budgetDao())
+                val budgetRepository = LocalBudgetRepository(firstDatabase.budgetDao(), fixedClock)
                 budgetRepository.save(originalBudget)
                 budgetRepository.save(updatedBudget)
                 budgetRepository.save(categoryBudget)
@@ -81,7 +90,10 @@ class LocalRepositoryTest {
 
             val reopenedDatabase = openFileDatabase(databaseFile.absolutePath)
             try {
-                val transactionRepository = LocalTransactionRepository(reopenedDatabase.transactionDao())
+                val transactionRepository = LocalTransactionRepository(
+                    reopenedDatabase.transactionDao(),
+                    fixedClock,
+                )
                 assertEquals(
                     transaction,
                     transactionRepository.get(transaction.id),
@@ -129,7 +141,7 @@ class LocalRepositoryTest {
     fun monthQueryAndDeleteReflectCurrentTransactions() = runTest {
         val database = openMemoryDatabase()
         try {
-            val repository = LocalTransactionRepository(database.transactionDao())
+            val repository = LocalTransactionRepository(database.transactionDao(), fixedClock)
             val august = expense(
                 id = "transaction-august",
                 dateTime = Instant.parse("2026-08-31T23:59:59Z"),
@@ -161,7 +173,7 @@ class LocalRepositoryTest {
     fun monthObserverEmitsAfterAddAndDelete() = runTest {
         val database = openMemoryDatabase()
         try {
-            val repository = LocalTransactionRepository(database.transactionDao())
+            val repository = LocalTransactionRepository(database.transactionDao(), fixedClock)
             val transaction = expense(
                 id = "transaction-observed",
                 dateTime = Instant.parse("2026-08-21T05:00:00Z"),
@@ -199,11 +211,12 @@ class LocalRepositoryTest {
     fun budgetObserverEmitsAfterCreateAndUpdate() = runTest {
         val database = openMemoryDatabase()
         try {
-            val repository = LocalBudgetRepository(database.budgetDao())
+            val repository = LocalBudgetRepository(database.budgetDao(), fixedClock)
             val original = Budget(
                 id = "budget-observed",
                 month = BudgetMonth(2026, 8),
                 amountLimit = 100_000L,
+                updatedAt = FIXED_NOW_MILLIS,
             )
             val updated = original.copy(amountLimit = 120_000L)
             val emissions = mutableListOf<List<Budget>>()
@@ -236,7 +249,7 @@ class LocalRepositoryTest {
         val database = openMemoryDatabase()
         try {
             val dataRepository = LocalFinanceDataRepository(database)
-            val transactionRepository = LocalTransactionRepository(database.transactionDao())
+            val transactionRepository = LocalTransactionRepository(database.transactionDao(), fixedClock)
             val original = expense(
                 id = "transaction-original",
                 amount = 1_000L,
@@ -280,7 +293,7 @@ class LocalRepositoryTest {
         val database = openMemoryDatabase()
         try {
             val dataRepository = LocalFinanceDataRepository(database)
-            val transactionRepository = LocalTransactionRepository(database.transactionDao())
+            val transactionRepository = LocalTransactionRepository(database.transactionDao(), fixedClock)
             val existing = expense(
                 id = "transaction-safe",
                 dateTime = Instant.parse("2026-08-10T08:30:00Z"),
@@ -328,5 +341,10 @@ class LocalRepositoryTest {
         accountId = null,
         dateTime = dateTime,
         note = note,
+        updatedAt = FIXED_NOW_MILLIS,
     )
+
+    private companion object {
+        const val FIXED_NOW_MILLIS = 1_756_896_000_000L
+    }
 }

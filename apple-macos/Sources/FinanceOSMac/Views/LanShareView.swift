@@ -1,7 +1,8 @@
 import SwiftUI
 import Network
 import Darwin
-import FinanceOSCore
+import AppKit
+import FinanceOSShared
 
 // MARK: - 局域网手动共享
 
@@ -73,6 +74,27 @@ struct LanShareView: View {
                         Label(model.localIP, systemImage: "wifi")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        Divider()
+                        HStack(spacing: 8) {
+                            Text("配对码（仅本次接收会话有效）")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button {
+                                model.copyActivePairingCode()
+                            } label: {
+                                Label("复制", systemImage: "doc.on.doc")
+                            }
+                            .buttonStyle(.glass)
+                            .controlSize(.small)
+                        }
+                        Text(model.activePairingCode)
+                            .font(.system(size: 20, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(.orange)
+                            .textSelection(.enabled)
+                        Text("对方需要输入上方配对码才能拉取或推送数据；停止接收后即失效。")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                     }
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -105,6 +127,14 @@ struct LanShareView: View {
                     TextField("45678", text: remotePortBinding)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 110)
+                }
+
+                HStack(spacing: 10) {
+                    Text("配对码")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    TextField("请输入对方展示的 10 位配对码", text: pairingCodeBinding)
+                        .textFieldStyle(.roundedBorder)
                 }
 
                 HStack(spacing: 10) {
@@ -178,6 +208,10 @@ struct LanShareView: View {
     private var remotePortBinding: Binding<String> {
         Binding(get: { model.remotePortText }, set: { model.remotePortText = $0 })
     }
+
+    private var pairingCodeBinding: Binding<String> {
+        Binding(get: { model.pairingCodeText }, set: { model.pairingCodeText = $0 })
+    }
 }
 
 // MARK: - 页面状态
@@ -190,11 +224,13 @@ final class LanShareViewModel {
     private(set) var serverRunning = false
     private(set) var localIP = ""
     private(set) var serverAddress = ""
+    private(set) var activePairingCode = ""
     private var server: LanShareHTTPServer?
 
     // 客户端（发起方）
     var remoteHost = ""
     var remotePortText = "45678"
+    var pairingCodeText = ""
     private(set) var clientBusy = false
 
     // 状态与日志
@@ -202,6 +238,7 @@ final class LanShareViewModel {
     private(set) var resultIsError = false
     private(set) var logLines: [String] = []
     private let logLimit = 8
+    private let deviceId: String = DeviceIdentity.shared.loadOrCreate()
 
     // MARK: - 服务端控制
 
@@ -225,14 +262,19 @@ final class LanShareViewModel {
                 onTerminated: { [weak self] message in self?.handleServerTerminated(message) }
             )
             self.server = server
+            let code = LanPairing.shared.generate()
+            server.pairingCode = code
+            activePairingCode = code
             try server.start()
             serverRunning = true
             serverAddress = "http://\(localIP):\(portNumber)"
             setResult("开始接收：对端请访问 \(serverAddress)", isError: false)
             appendLog("已在端口 \(portNumber) 开启接收服务")
+            appendLog("本次配对码：\(code)，仅本次会话有效")
         } catch {
             server = nil
             serverRunning = false
+            activePairingCode = ""
             setResult("启动接收服务失败：\(error.localizedDescription)", isError: true)
             appendLog("启动接收失败：\(error.localizedDescription)")
         }
@@ -243,13 +285,23 @@ final class LanShareViewModel {
         server = nil
         serverRunning = false
         serverAddress = ""
+        activePairingCode = ""
         appendLog("已停止接收")
+    }
+
+    /// 把当前会话配对码复制到系统剪贴板。
+    func copyActivePairingCode() {
+        guard !activePairingCode.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(activePairingCode, forType: .string)
+        setResult("配对码已复制：\(activePairingCode)", isError: false)
     }
 
     private func handleServerTerminated(_ message: String) {
         server = nil
         serverRunning = false
         serverAddress = ""
+        activePairingCode = ""
         setResult("接收服务已停止：\(message)", isError: true)
         appendLog("接收服务已停止：\(message)")
     }
@@ -267,11 +319,22 @@ final class LanShareViewModel {
             setResult("地址无效：请输入对端主机地址与端口。", isError: true)
             return
         }
+        let code = LanShareSupport.normalizedPairingCode(pairingCodeText)
+        guard LanPairing.shared.isValid(code: code) else {
+            setResult("配对码无效：请输入对方展示的 10 位配对码。", isError: true)
+            return
+        }
+        let salt = dataOf(LanSyncCrypto.shared.randomBytes(size: 16))
+        let device = deviceId
         clientBusy = true
         resultMessage = nil
-        let request = URLRequest(url: url, timeoutInterval: 10)
         Task.detached(priority: .userInitiated) { [weak self] in
             do {
+                let key = try LanSyncCrypto.shared.deriveKey(code: code, salt: kmpBytes(salt))
+                var request = URLRequest(url: url, timeoutInterval: 10)
+                request.setValue("2", forHTTPHeaderField: "X-FOS-Proto")
+                request.setValue(hexString(salt), forHTTPHeaderField: "X-FOS-Salt")
+                request.setValue(device, forHTTPHeaderField: "X-FOS-Device-Id")
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard let http = response as? HTTPURLResponse else {
                     throw LanShareError("目标不是 HTTP 服务。")
@@ -279,8 +342,9 @@ final class LanShareViewModel {
                 guard http.statusCode == 200 else {
                     throw LanShareError(LanShareSupport.serverErrorMessage(from: data, fallback: "对方返回 HTTP \(http.statusCode)。"))
                 }
+                let snapshotText = try lanDecryptPayloadBody(from: data, key: key)
                 // 在后台线程解析备份 JSON，避免大数据拖慢主线程。
-                let snapshot = try FinanceDataJsonCodec.decode(String(decoding: data, as: UTF8.self))
+                let snapshot = try FinanceDataJsonCodec.decode(snapshotText)
                 let result = await MainActor.run { store.applyMerge(snapshot) }
                 let summary = "拉取成功：新增流水 \(result.transactionCount) 笔、分类 \(result.categoryCount) 个、预算 \(result.budgetCount) 条。"
                 await MainActor.run {
@@ -302,15 +366,42 @@ final class LanShareViewModel {
             setResult("地址无效：请输入对端主机地址与端口。", isError: true)
             return
         }
+        let code = LanShareSupport.normalizedPairingCode(pairingCodeText)
+        guard LanPairing.shared.isValid(code: code) else {
+            setResult("配对码无效：请输入对方展示的 10 位配对码。", isError: true)
+            return
+        }
+        let salt = dataOf(LanSyncCrypto.shared.randomBytes(size: 16))
+        let iv = dataOf(LanSyncCrypto.shared.randomBytes(size: 16))
+        let device = deviceId
         clientBusy = true
         resultMessage = nil
         Task.detached(priority: .userInitiated) { [weak self] in
             do {
                 let json = try await MainActor.run { try store.exportJSON() }
+                let key = try LanSyncCrypto.shared.deriveKey(code: code, salt: kmpBytes(salt))
+                let payload = LanSyncPayload(
+                    proto: 2,
+                    alg: lanAlgName,
+                    ts: lanNowMillis(),
+                    deviceId: device,
+                    kind: lanKindSnapshotV2,
+                    body: json
+                )
+                let envelope = dataOf(try LanSyncCrypto.shared.encrypt(
+                    key: key,
+                    iv: kmpBytes(iv),
+                    plaintext: kmpBytes(dataOf(payload.encode())),
+                    aad: kmpBytes(Data("2".utf8))
+                ))
                 var request = URLRequest(url: url, timeoutInterval: 10)
                 request.httpMethod = "POST"
-                request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
-                request.httpBody = Data(json.utf8)
+                request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+                request.setValue("2", forHTTPHeaderField: "X-FOS-Proto")
+                request.setValue(hexString(salt), forHTTPHeaderField: "X-FOS-Salt")
+                request.setValue(hexString(iv), forHTTPHeaderField: "X-FOS-Nonce")
+                request.setValue(device, forHTTPHeaderField: "X-FOS-Device-Id")
+                request.httpBody = envelope
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard let http = response as? HTTPURLResponse else {
                     throw LanShareError("目标不是 HTTP 服务。")
@@ -318,7 +409,8 @@ final class LanShareViewModel {
                 guard http.statusCode == 200 else {
                     throw LanShareError(LanShareSupport.serverErrorMessage(from: data, fallback: "对方返回 HTTP \(http.statusCode)。"))
                 }
-                let summary = LanShareSupport.importedSummary(from: data) ?? "推送成功：对方已接收快照。"
+                let resultText = try lanDecryptPayloadBody(from: data, key: key)
+                let summary = LanShareSupport.importedSummary(from: resultText) ?? "推送成功：对方已接收快照。"
                 await MainActor.run {
                     self?.setResult(summary, isError: false)
                     self?.appendLog("已把本机快照推送给 \(host)")
@@ -407,6 +499,11 @@ private enum LanShareSupport {
         return UInt16(number)
     }
 
+    /// 规整用户输入的配对码：去掉首尾空白并统一大写（Base32 字母表为大写）。
+    static func normalizedPairingCode(_ raw: String) -> String {
+        raw.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    }
+
     /// 遍历本机网络接口，返回 en0/en1 上第一个可用的局域网 IPv4 地址。
     static func detectLocalIPv4() -> String? {
         var address: String?
@@ -455,6 +552,11 @@ private enum LanShareSupport {
         return "推送成功：对方合并流水 \(transactions) 笔、分类 \(categories) 个、预算 \(budgets) 条。"
     }
 
+    /// 解析推送成功后的 {"imported": {...}} 汇总（来自解密后 payload 文本）。
+    static func importedSummary(from text: String) -> String? {
+        importedSummary(from: Data(text.utf8))
+    }
+
     /// 把任意网络错误翻译成用户可读的中文提示。
     static func readableClientError(_ error: Error) -> String {
         if let lanError = error as? LanShareError {
@@ -487,6 +589,93 @@ private enum LanShareSupport {
     }
 }
 
+// MARK: - 配对加密辅助（shared FinanceOSShared）
+
+private let lanAlgName = "AES-256-CBC+HMAC-SHA256"
+private let lanKindSnapshotV2 = "snapshot_v2"
+private let lanKindSnapshotResponse = "snapshot_response"
+private let lanKindImportResult = "import_result"
+
+private func lanNowMillis() -> Int64 {
+    Int64((Date().timeIntervalSince1970 * 1000).rounded())
+}
+
+private func kmpBytes(_ data: Data) -> KotlinByteArray {
+    KotlinByteArray(size: Int32(data.count)) { index in
+        KotlinByte(char: Int8(bitPattern: data[Int(index.intValue)]))
+    }
+}
+
+private func dataOf(_ bytes: KotlinByteArray) -> Data {
+    var out = Data(count: Int(bytes.size))
+    for index in 0..<Int(bytes.size) {
+        out[index] = UInt8(bitPattern: bytes.get(index: Int32(index)))
+    }
+    return out
+}
+
+private func hexString(_ data: Data) -> String {
+    let digits = Array("0123456789abcdef")
+    var result = ""
+    result.reserveCapacity(data.count * 2)
+    for byte in data {
+        let value = Int(byte)
+        result.append(digits[value >> 4])
+        result.append(digits[value & 0x0F])
+    }
+    return result
+}
+
+private func hexData(_ text: String) -> Data? {
+    let characters = Array(text)
+    guard characters.count % 2 == 0 else { return nil }
+    var bytes: [UInt8] = []
+    bytes.reserveCapacity(characters.count / 2)
+    var index = 0
+    while index < characters.count {
+        guard let high = characters[index].hexDigitValue,
+              let low = characters[index + 1].hexDigitValue else { return nil }
+        bytes.append(UInt8((high << 4) | low))
+        index += 2
+    }
+    return Data(bytes)
+}
+
+/// 解密响应信封并取出明文 payload 的 body（snapshot 或 import_result 的 JSON 文本）。
+private func lanDecryptPayloadBody(from envelope: Data, key: KotlinByteArray) throws -> String {
+    let plaintext: Data
+    do {
+        plaintext = dataOf(try LanSyncCrypto.shared.decrypt(key: key, envelope: kmpBytes(envelope), aad: kmpBytes(Data("2".utf8))))
+    } catch {
+        throw LanShareError("配对码错误或数据已损坏。")
+    }
+    let payload = LanSyncPayload.companion.decode(bytes: kmpBytes(plaintext))
+    return payload.body
+}
+
+/// 小对象锁保护（配对码由主线程写入、服务队列读取）。
+private final class ProtectedValue<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: Value
+
+    init(_ value: Value) {
+        storage = value
+    }
+
+    var value: Value {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return storage
+        }
+        set {
+            lock.lock()
+            defer { lock.unlock() }
+            storage = newValue
+        }
+    }
+}
+
 // MARK: - 明文 HTTP/1.1 接收服务
 
 /// 基于 Network.framework（NWListener/TCP）的最小明文 HTTP/1.1 服务。
@@ -506,9 +695,26 @@ final class LanShareHTTPServer: @unchecked Sendable {
     private let workQueue = DispatchQueue(label: "com.financeos.mac.lanshare.server")
     private var listener: NWListener?
 
+    // v2 配对加密会话状态：
+    /// 当前会话配对码（页面开启接收前注入，停止接收后置空）。主线程写、服务队列读，故加锁。
+    private let pairingCodeBox = ProtectedValue<String?>(nil)
+    var pairingCode: String? {
+        get { pairingCodeBox.value }
+        set { pairingCodeBox.value = newValue }
+    }
+
+    /// 最近见过的 nonce（防重放，上限 1024）。仅在 workQueue 访问。
+    private var recentNonces = Set<Data>()
+    private var recentNonceOrder: [Data] = []
+
+    /// 连续认证失败计数与会话锁定标志。仅在 workQueue 访问。
+    private var authFailureCount = 0
+    private var authLocked = false
+
     private static let headerTerminator = Data("\r\n\r\n".utf8)
-    private static let maxBodyBytes = 4 * 1024 * 1024
-    private static let maxRequestBytes = maxBodyBytes + 64 * 1024
+    private static let maxHeaderBytes = 16 * 1024
+    private static let maxBodyBytes = 64 * 1024 * 1024
+    private static let maxRequestBytes = maxBodyBytes + maxHeaderBytes
 
     init(
         port: UInt16,
@@ -634,18 +840,30 @@ final class LanShareHTTPServer: @unchecked Sendable {
 
     private enum ParsedRequest {
         case malformed(String)
-        case complete(method: String, path: String, body: Data)
+        case complete(method: String, path: String, fields: [String: String], body: Data)
     }
 
-    /// 已解析的请求行与头部信息。
+    /// 已解析的请求行与头部信息（字段名一律小写）。
     private struct ParsedHeader {
         let method: String
         let path: String
-        let contentLength: Int
+        let fields: [String: String]
+
+        var contentLength: Int {
+            fields["content-length"].flatMap { Int($0) } ?? 0
+        }
     }
 
     private static func tryParseRequest(from buffer: Data) -> ParsedRequest? {
-        guard let terminatorRange = buffer.range(of: headerTerminator) else { return nil }
+        guard let terminatorRange = buffer.range(of: headerTerminator) else {
+            if buffer.count > maxHeaderBytes {
+                return .malformed("请求头过大。")
+            }
+            return nil
+        }
+        if terminatorRange.lowerBound > maxHeaderBytes {
+            return .malformed("请求头过大。")
+        }
         let headerText = String(decoding: buffer[..<terminatorRange.lowerBound], as: UTF8.self)
         let outcome = parseHeader(headerText)
         if let error = outcome.error {
@@ -658,7 +876,7 @@ final class LanShareHTTPServer: @unchecked Sendable {
         let totalLength = bodyStart + parsed.contentLength
         guard buffer.count >= totalLength else { return nil }
         let body = buffer.subdata(in: bodyStart..<totalLength)
-        return .complete(method: parsed.method, path: parsed.path, body: body)
+        return .complete(method: parsed.method, path: parsed.path, fields: parsed.fields, body: body)
     }
 
     private static func parseHeader(_ text: String) -> (header: ParsedHeader?, error: String?) {
@@ -676,7 +894,7 @@ final class LanShareHTTPServer: @unchecked Sendable {
             return (nil, "仅支持 HTTP/1.x 明文请求。")
         }
 
-        var contentLength = 0
+        var fields: [String: String] = [:]
         for line in lines.dropFirst() {
             let pair = line.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
             guard pair.count == 2 else { continue }
@@ -687,14 +905,14 @@ final class LanShareHTTPServer: @unchecked Sendable {
                 guard let length = Int(value), length >= 0, length <= maxBodyBytes else {
                     return (nil, "Content-Length 无效或请求体过大。")
                 }
-                contentLength = length
             case "transfer-encoding":
                 return (nil, "不支持 chunked 传输编码。")
             default:
                 break
             }
+            fields[name] = value
         }
-        return (ParsedHeader(method: method, path: path, contentLength: contentLength), nil)
+        return (ParsedHeader(method: method, path: path, fields: fields), nil)
     }
 
     // MARK: - 路由与响应
@@ -704,59 +922,181 @@ final class LanShareHTTPServer: @unchecked Sendable {
         case .malformed(let message):
             report("请求格式错误：\(message)")
             send(errorResponse: message, to: connection)
-        case .complete(let method, let rawPath, let body):
+        case .complete(let method, let rawPath, let fields, let body):
             let path = rawPath.split(separator: "?", maxSplits: 1).first.map(String.init) ?? rawPath
-            let response = makeResponse(method: method, path: path, body: body)
+            let response = makeResponse(method: method, path: path, fields: fields, body: body)
             report("\(method) \(path) → \(response.statusCode)")
             send(response, to: connection)
         }
     }
 
-    private func makeResponse(method: String, path: String, body: Data) -> LanHTTPResponse {
+    private func makeResponse(method: String, path: String, fields: [String: String], body: Data) -> LanHTTPResponse {
         switch (method, path) {
         case ("GET", "/api/ping"):
+            // /api/ping 不承载业务数据，保持明文以便地址探测。
             return LanHTTPResponse.json(
                 200,
                 ["status": "ok", "device": "FinanceOSMac"],
                 contentType: "application/json; charset=utf-8"
             )
         case ("GET", "/api/snapshot"):
-            let outcome = Self.hopToMain { try self.exportSnapshot() }
-            switch outcome {
-            case .success(let json):
-                return LanHTTPResponse(statusCode: 200, contentType: "application/json", body: Data(json.utf8))
-            case .failure(let error):
-                return LanHTTPResponse.error(400, Self.friendlyMessage(for: error))
-            }
+            return makeEncryptedResponse(method: method, fields: fields, requestBody: body)
         case ("POST", "/api/snapshot"):
-            guard let text = String(data: body, encoding: .utf8) else {
-                return LanHTTPResponse.error(400, "请求体不是有效的 UTF-8 编码。")
-            }
-            do {
-                // 先在后台线程解码校验，再回到主线程做合并写入。
-                let snapshot = try FinanceDataJsonCodec.decode(text)
-                let outcome = Self.hopToMain { try self.importSnapshot(snapshot) }
-                switch outcome {
-                case .success(let imported):
-                    return LanHTTPResponse.json(
-                        200,
-                        [
-                            "imported": [
-                                "transactions": imported.transactionCount,
-                                "categories": imported.categoryCount,
-                                "budgets": imported.budgetCount,
-                            ],
-                        ]
-                    )
-                case .failure(let error):
-                    return LanHTTPResponse.error(400, Self.friendlyMessage(for: error))
-                }
-            } catch {
-                return LanHTTPResponse.error(400, Self.friendlyMessage(for: error))
-            }
+            return makeEncryptedResponse(method: method, fields: fields, requestBody: body)
         default:
             return LanHTTPResponse.error(404, "未找到接口：\(method) \(path)")
         }
+    }
+
+    // MARK: - v2 配对加密端点（GET/POST /api/snapshot）
+
+    /// 受保护快照端点：加解密全部在本请求工作队列完成，仅在导出/导入快照时经 hopToMain 回主线程。
+    private func makeEncryptedResponse(method: String, fields: [String: String], requestBody: Data) -> LanHTTPResponse {
+        guard let code = pairingCode, !code.isEmpty else {
+            return LanHTTPResponse.error(503, "接收会话未开始，请在本机重新开启接收。")
+        }
+        if authLocked {
+            return policyResponse(429, LanSyncPolicy.shared.rateLimitedBody())
+        }
+        guard fields["x-fos-proto"] == "2" else {
+            return policyResponse(426, LanSyncPolicy.shared.upgradeRequiredBody())
+        }
+
+        // salt：POST 必带；GET 缺省时服务端生成并在响应头回写。
+        let saltHex = fields["x-fos-salt"]
+        let salt: Data
+        let saltEchoHex: String?
+        if let saltHex {
+            guard let decoded = hexData(saltHex) else {
+                return LanHTTPResponse.error(400, "请求头 X-FOS-Salt 不是合法十六进制。")
+            }
+            salt = decoded
+            saltEchoHex = nil
+        } else if method == "GET" {
+            salt = dataOf(LanSyncCrypto.shared.randomBytes(size: 16))
+            saltEchoHex = hexString(salt)
+        } else {
+            return LanHTTPResponse.error(400, "缺少请求头 X-FOS-Salt。")
+        }
+
+        let key: KotlinByteArray
+        do {
+            key = try LanSyncCrypto.shared.deriveKey(code: code, salt: kmpBytes(salt))
+        } catch {
+            return authFailureResponse()
+        }
+
+        if method == "POST" {
+            return makeEncryptedPOSTResponse(key: key, fields: fields, requestBody: requestBody)
+        }
+        return makeEncryptedGETResponse(key: key, saltEchoHex: saltEchoHex)
+    }
+
+    /// GET：导出本机快照 → snapshot_response payload → 加密信封。
+    private func makeEncryptedGETResponse(key: KotlinByteArray, saltEchoHex: String?) -> LanHTTPResponse {
+        let outcome = Self.hopToMain { try self.exportSnapshot() }
+        switch outcome {
+        case .success(let json):
+            return encryptedPayloadResponse(bodyText: json, kind: lanKindSnapshotResponse, key: key, saltEchoHex: saltEchoHex)
+        case .failure(let error):
+            return LanHTTPResponse.error(400, Self.friendlyMessage(for: error))
+        }
+    }
+
+    /// POST：解密 → 校验新鲜度/防重放 → 导入快照 → import_result payload → 加密信封。
+    private func makeEncryptedPOSTResponse(key: KotlinByteArray, fields: [String: String], requestBody: Data) -> LanHTTPResponse {
+        guard let nonceHex = fields["x-fos-nonce"] else {
+            return LanHTTPResponse.error(400, "缺少请求头 X-FOS-Nonce。")
+        }
+        guard let nonce = hexData(nonceHex) else {
+            return LanHTTPResponse.error(400, "请求头 X-FOS-Nonce 不是合法十六进制。")
+        }
+        if recentNonces.contains(nonce) {
+            return LanHTTPResponse.error(400, "请求重复（nonce 已使用）。")
+        }
+
+        let plaintext: Data
+        do {
+            plaintext = dataOf(try LanSyncCrypto.shared.decrypt(key: key, envelope: kmpBytes(requestBody), aad: kmpBytes(Data("2".utf8))))
+        } catch {
+            return authFailureResponse()
+        }
+        let payload = LanSyncPayload.companion.decode(bytes: kmpBytes(plaintext))
+        guard LanSyncPolicy.shared.isTimestampFresh(ts: payload.ts, nowMillis: lanNowMillis()) else {
+            return policyResponse(400, LanSyncPolicy.shared.staleTimestampBody())
+        }
+
+        // 记录 nonce 防重放（上限 1024，LRU 淘汰）。
+        recentNonces.insert(nonce)
+        recentNonceOrder.append(nonce)
+        if recentNonceOrder.count > 1024 {
+            recentNonceOrder.removeFirst(recentNonceOrder.count - 1024)
+            recentNonces = Set(recentNonceOrder)
+        }
+
+        // body 为快照 JSON：先在后台线程解码校验，再回主线程合并写入。
+        let snapshot: FinanceDataSnapshot
+        do {
+            snapshot = try FinanceDataJsonCodec.decode(payload.body)
+        } catch {
+            return LanHTTPResponse.error(400, Self.friendlyMessage(for: error))
+        }
+        let outcome = Self.hopToMain { try self.importSnapshot(snapshot) }
+        switch outcome {
+        case .success(let imported):
+            resetAuthFailures()
+            let importedJSON = "{\"imported\":{\"transactions\":\(imported.transactionCount),\"categories\":\(imported.categoryCount),\"budgets\":\(imported.budgetCount)}}"
+            return encryptedPayloadResponse(bodyText: importedJSON, kind: lanKindImportResult, key: key, saltEchoHex: nil)
+        case .failure(let error):
+            return LanHTTPResponse.error(400, Self.friendlyMessage(for: error))
+        }
+    }
+
+    /// 构造业务明文 payload → 加密为信封响应（响应头 X-FOS-Nonce = 本次 IV；GET 生成 salt 时回写 X-FOS-Salt）。
+    private func encryptedPayloadResponse(bodyText: String, kind: String, key: KotlinByteArray, saltEchoHex: String?) -> LanHTTPResponse {
+        do {
+            let iv = dataOf(LanSyncCrypto.shared.randomBytes(size: 16))
+            let payload = LanSyncPayload(
+                proto: 2,
+                alg: lanAlgName,
+                ts: lanNowMillis(),
+                deviceId: DeviceIdentity.shared.loadOrCreate(),
+                kind: kind,
+                body: bodyText
+            )
+            let envelope = dataOf(try LanSyncCrypto.shared.encrypt(
+                key: key,
+                iv: kmpBytes(iv),
+                plaintext: kmpBytes(dataOf(payload.encode())),
+                aad: kmpBytes(Data("2".utf8))
+            ))
+            var extraHeaders = ["X-FOS-Nonce": hexString(iv)]
+            if let saltEchoHex {
+                extraHeaders["X-FOS-Salt"] = saltEchoHex
+            }
+            return LanHTTPResponse(statusCode: 200, contentType: "application/octet-stream", body: envelope, extraHeaders: extraHeaders)
+        } catch {
+            return LanHTTPResponse.error(500, "加密响应失败，请稍后重试。")
+        }
+    }
+
+    /// 认证失败：累计计数，连续 5 次后本会话内锁定为 429。
+    private func authFailureResponse() -> LanHTTPResponse {
+        authFailureCount += 1
+        if authFailureCount >= 5 {
+            authLocked = true
+            return policyResponse(429, LanSyncPolicy.shared.rateLimitedBody())
+        }
+        return policyResponse(401, LanSyncPolicy.shared.authFailedBody())
+    }
+
+    private func resetAuthFailures() {
+        authFailureCount = 0
+    }
+
+    /// LanSyncPolicy 的错误体本身就是 {"error": ...} JSON 文本，直接作为响应体返回。
+    private func policyResponse(_ status: Int, _ jsonBody: String) -> LanHTTPResponse {
+        LanHTTPResponse(statusCode: status, contentType: "application/json; charset=utf-8", body: Data(jsonBody.utf8))
     }
 
     private static func friendlyMessage(for error: Error) -> String {
@@ -839,18 +1179,23 @@ private struct LanHTTPResponse {
     var statusText: String
     var contentType: String
     var body: Data
+    var extraHeaders: [String: String]
 
-    init(statusCode: Int, contentType: String, body: Data) {
+    init(statusCode: Int, contentType: String, body: Data, extraHeaders: [String: String] = [:]) {
         self.statusCode = statusCode
         self.contentType = contentType
         self.body = body
+        self.extraHeaders = extraHeaders
         statusText = Self.reason(statusCode)
     }
 
     /// 序列化为 HTTP/1.1 明文响应，不使用 chunked。
     func serialized() -> Data {
-        let head = "HTTP/1.1 \(statusCode) \(statusText)\r\n"
-            + "Content-Type: \(contentType)\r\n"
+        var head = "HTTP/1.1 \(statusCode) \(statusText)\r\n"
+        for (name, value) in extraHeaders.sorted(by: { $0.key < $1.key }) {
+            head += "\(name): \(value)\r\n"
+        }
+        head += "Content-Type: \(contentType)\r\n"
             + "Content-Length: \(body.count)\r\n"
             + "Connection: close\r\n\r\n"
         var data = Data(head.utf8)
@@ -872,7 +1217,13 @@ private struct LanHTTPResponse {
         switch statusCode {
         case 200: "OK"
         case 400: "Bad Request"
+        case 401: "Unauthorized"
         case 404: "Not Found"
+        case 413: "Payload Too Large"
+        case 426: "Upgrade Required"
+        case 429: "Too Many Requests"
+        case 500: "Internal Server Error"
+        case 503: "Service Unavailable"
         default: "Error"
         }
     }

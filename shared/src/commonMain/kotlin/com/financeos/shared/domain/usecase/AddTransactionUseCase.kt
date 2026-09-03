@@ -5,6 +5,7 @@ import com.financeos.shared.domain.model.Transaction
 import com.financeos.shared.domain.model.TransactionType
 import com.financeos.shared.domain.repository.CategoryRepository
 import com.financeos.shared.domain.repository.TransactionRepository
+import com.financeos.shared.domain.time.EpochClock
 import kotlin.time.Instant
 
 /** 新增流水所需的未经持久化输入。 */
@@ -22,6 +23,7 @@ data class AddTransactionCommand(
 class AddTransactionUseCase(
     private val transactionRepository: TransactionRepository,
     private val categoryRepository: CategoryRepository,
+    private val clock: EpochClock = EpochClock.system,
 ) {
     suspend operator fun invoke(command: AddTransactionCommand): Transaction {
         require(command.amount > 0) { "Transaction amount must be greater than zero." }
@@ -34,6 +36,7 @@ class AddTransactionUseCase(
             "Transaction type is not supported by the selected category."
         }
 
+        // 创建即修改：新流水以上一刻为最后修改时间，使其在跨设备合并中成为真实的裁决依据。
         val transaction = Transaction(
             id = command.id,
             amount = command.amount,
@@ -42,6 +45,7 @@ class AddTransactionUseCase(
             accountId = command.accountId,
             dateTime = command.dateTime,
             note = command.note,
+            updatedAt = clock.nowMillis(),
         )
         transactionRepository.add(transaction)
         return transaction

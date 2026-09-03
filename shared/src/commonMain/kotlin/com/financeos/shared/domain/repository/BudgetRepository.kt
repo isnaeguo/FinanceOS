@@ -15,6 +15,9 @@ interface BudgetRepository {
     /** 获取指定月份的全部预算。 */
     suspend fun getByMonth(month: BudgetMonth): List<Budget>
 
+    /** 持续观察全部预算，使适配层等长期订阅方能与数据库保持一致。 */
+    fun observeAll(): Flow<List<Budget>>
+
     /** 持续观察指定月份预算，使 Dashboard 能响应预算新增或修改。 */
     fun observeByMonth(month: BudgetMonth): Flow<List<Budget>>
 

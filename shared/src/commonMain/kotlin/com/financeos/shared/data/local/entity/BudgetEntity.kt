@@ -24,4 +24,10 @@ data class BudgetEntity(
     val categoryKey: String,
     @ColumnInfo(name = "amount_limit_minor")
     val amountLimitMinor: Long,
+    /** 最后修改时间（Unix 纪元毫秒），跨设备冲突裁决依据。 */
+    @ColumnInfo(name = "updated_at")
+    val updatedAt: Long,
+    /** 删除时间（Unix 纪元毫秒）；`NULL` 表示未删除，软删墓碑据此保留。 */
+    @ColumnInfo(name = "deleted_at")
+    val deletedAt: Long?,
 )

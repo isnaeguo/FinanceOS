@@ -2,10 +2,14 @@ package com.financeos.shared.data.transfer
 
 import com.financeos.shared.domain.model.Transaction
 import com.financeos.shared.domain.model.TransactionType
+import com.financeos.shared.domain.time.EpochClock
+import kotlin.Throws
 import kotlin.time.Instant
 
 /** 流水 CSV 编解码器，金额以最小货币单位列作为无损导入依据。 */
-class TransactionCsvCodec {
+class TransactionCsvCodec(
+    private val clock: EpochClock = EpochClock.system,
+) {
     fun encode(transactions: List<Transaction>): String = buildString {
         // BOM 让常见桌面表格软件无需手动选择编码即可正确显示中文备注。
         append('\uFEFF')
@@ -28,6 +32,13 @@ class TransactionCsvCodec {
             }
     }
 
+    /**
+     * 解析 CSV 为流水列表。
+     *
+     * 流水交换格式不携带同步元数据，因此整批以导入时刻作为 `updatedAt`、`deletedAt` 为 `null`，
+     * 使新导入的记录在跨设备合并中胜过同 ID 的旧数据。
+     */
+    @Throws(DataTransferException::class)
     fun decode(content: String): List<Transaction> {
         val rows = parseRows(content.removePrefix("\uFEFF"))
         if (rows.isEmpty()) throw DataTransferException("CSV 文件为空。")
@@ -36,6 +47,7 @@ class TransactionCsvCodec {
             header.indexOf(requiredHeader).takeIf { it >= 0 }
                 ?: throw DataTransferException("CSV 缺少字段：$requiredHeader。")
         }
+        val importedAtMillis = clock.nowMillis()
 
         return rows.drop(1)
             .filterNot { row -> row.all(String::isBlank) }
@@ -54,6 +66,7 @@ class TransactionCsvCodec {
                             field("date_time_epoch_millis").toLong(),
                         ),
                         note = field("note").ifBlank { null },
+                        updatedAt = importedAtMillis,
                     )
                 } catch (error: Exception) {
                     throw DataTransferException(

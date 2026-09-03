@@ -1,6 +1,5 @@
 import SwiftUI
 import Charts
-import FinanceOSCore
 
 struct DashboardView: View {
     @Environment(FinanceStore.self) private var store

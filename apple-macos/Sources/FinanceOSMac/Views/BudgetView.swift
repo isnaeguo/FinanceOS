@@ -1,5 +1,4 @@
 import SwiftUI
-import FinanceOSCore
 
 struct BudgetView: View {
     @Environment(FinanceStore.self) private var store
@@ -195,7 +194,7 @@ struct BudgetView: View {
 }
 
 private struct CategoryBudgetRow: View {
-    let category: FinanceOSCore.Category
+    let category: Category
     let usage: BudgetUsage?
     let monthExpense: Int64
     let onEdit: () -> Void

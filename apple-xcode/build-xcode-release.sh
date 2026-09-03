@@ -8,7 +8,7 @@ cd "$(dirname "$0")"
 OUT=build
 ARCHIVE="$OUT/FinanceOS.xcarchive"
 APP_OUT="$OUT/FinanceOS.app"
-DMG="$OUT/FinanceOS-0.4.1.dmg"
+DMG="$OUT/FinanceOS-1.0.0.dmg"
 
 echo "▶ Archive …"
 xcodebuild -project FinanceOS.xcodeproj \

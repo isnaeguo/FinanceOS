@@ -1,5 +1,4 @@
 import SwiftUI
-import FinanceOSCore
 
 /// 新增 / 编辑流水的可观察表单模型。
 @Observable
@@ -16,7 +15,7 @@ final class TransactionDraft {
 
     static func new() -> TransactionDraft { TransactionDraft() }
 
-    static func editing(_ transaction: FinanceOSCore.Transaction) -> TransactionDraft {
+    static func editing(_ transaction: Transaction) -> TransactionDraft {
         let draft = TransactionDraft()
         draft.type = transaction.type
         draft.amountText = formatMajorPlain(transaction.amount)
@@ -40,7 +39,7 @@ final class TransactionDraft {
         guard let amount = parsedAmount, let categoryId else { return }
         let note = note.trimmingCharacters(in: .whitespaces)
         let account = account.trimmingCharacters(in: .whitespaces)
-        let transaction = FinanceOSCore.Transaction(
+        let transaction = Transaction(
             id: editingId ?? UUID().uuidString,
             amount: amount,
             type: type,
@@ -268,7 +267,7 @@ struct AddTransactionSheet: View {
     }
 }
 
-private extension FinanceOSCore.Category {
+private extension Category {
     var colorForSelection: Color {
         CategoryVisual.resolved(for: self).color
     }

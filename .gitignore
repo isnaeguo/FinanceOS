@@ -38,3 +38,5 @@ DerivedData/
 ios/**/xcuserdata/
 ios/**/*.xcworkspace/xcuserdata/
 **/xcuserdata/
+# 三端 release/模拟器构建产物
+ios/build-release/

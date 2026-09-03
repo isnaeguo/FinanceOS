@@ -53,3 +53,10 @@ open FinanceOSiOS.xcodeproj
      勾选 `group.com.financeos.ios`（entitlements 已预置，选择你的 Team 后生效）；
   2. 选中你的开发者 Team。
   未启用 App Group 时 App 正常使用自己的容器，仅小组件显示“打开 FinanceOS 后重试”。
+
+## 数据内核
+- iOS 与 macOS 共用 KMP `shared` 框架（`project.yml` 构建脚本自动按 SDK 产出
+  iosSimulatorArm64/iosArm64 切片）。旧 `ExternalCore` 硬链接源已移除，视图经 FinanceStoreAdapter 读写
+  Room（App Group 容器）。旧 store.json 首次启动自动迁移并改名 `.migrated-*`。
+- `ios/FinanceOSiOSWidgets` 与 `ios/FinanceOSiOS/ExternalWidgetSources` 为同一文件（硬链接），小组件读取
+  App Group Room 库；不再依赖 store.json 快照。

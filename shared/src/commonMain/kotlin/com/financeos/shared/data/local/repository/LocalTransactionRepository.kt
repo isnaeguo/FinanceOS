@@ -5,6 +5,7 @@ import com.financeos.shared.data.local.mapper.toDomain
 import com.financeos.shared.data.local.mapper.toEntity
 import com.financeos.shared.domain.model.Transaction
 import com.financeos.shared.domain.repository.TransactionRepository
+import com.financeos.shared.domain.time.EpochClock
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
@@ -14,16 +15,36 @@ import kotlin.time.Instant
 /** 使用 Room DAO 实现流水业务存取。 */
 class LocalTransactionRepository(
     private val dao: TransactionDao,
+    private val clock: EpochClock = EpochClock.system,
 ) : TransactionRepository {
+    /**
+     * 写入流水。写入即视为一次本地修改，无条件打上当前时间作为最后修改时间；
+     * 同 ID 已存在（含软删墓碑）时覆盖写回，编辑流水因此可以先删后加。
+     */
     override suspend fun add(transaction: Transaction) {
-        dao.insert(transaction.toEntity())
+        val now = clock.nowMillis()
+        require(transaction.deletedAt == null || transaction.deletedAt <= now) {
+            "Transaction deletedAt must not be in the future."
+        }
+        dao.insert(transaction.copy(updatedAt = now).toEntity())
     }
 
-    override suspend fun delete(id: String): Boolean = dao.deleteById(id) > 0
+    /**
+     * 软删流水：写入 `deleted_at = now` 的墓碑并同步刷新 `updated_at`，记录本身保留，
+     * 使删除能随快照传播到其他设备；返回 `true` 表示该流水此前存在且未删除。
+     */
+    override suspend fun delete(id: String): Boolean {
+        val now = clock.nowMillis()
+        return dao.softDeleteById(id, deletedAt = now, updatedAt = now) > 0
+    }
 
     override suspend fun get(id: String): Transaction? = dao.getById(id)?.toDomain()
 
     override suspend fun getAll(): List<Transaction> = dao.getAll().map { it.toDomain() }
+
+    override fun observeAll(): Flow<List<Transaction>> = dao.observeAll()
+        .map { entities -> entities.map { it.toDomain() } }
+        .flowOn(Dispatchers.Default)
 
     override suspend fun getByPeriod(
         startInclusive: Instant,

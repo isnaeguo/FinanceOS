@@ -1,7 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import AppKit
-import FinanceOSCore
 
 struct DataBackupView: View {
     @Environment(FinanceStore.self) private var store

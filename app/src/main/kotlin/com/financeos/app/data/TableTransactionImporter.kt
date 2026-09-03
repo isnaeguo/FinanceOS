@@ -1,6 +1,7 @@
 package com.financeos.app.data
 
 import com.financeos.shared.data.transfer.DataTransferException
+import com.financeos.shared.data.transfer.StableRowId
 import com.financeos.shared.domain.model.Category
 import com.financeos.shared.domain.model.Transaction
 import com.financeos.shared.domain.model.TransactionType
@@ -227,9 +228,12 @@ object TableTransactionImporter {
         }
 
         // 分类：账单通常没有“分类”列，或列值是平台类目/未知名称。
-        // 分类只作为可选项：有能匹配的分类名/ID 才用，其余一律归“其他”，绝不因分类拒绝导入。
+        // 分类只作为可选项：先精确匹配 ID/名称，再用关键词把“餐饮美食/交通出行”等平台类目
+        // 映射到语义最近的系统分类，其余一律归“其他”，绝不因分类拒绝导入。
+        // 与 shared 端 TableTransactionImporter 保持同一语义，稳定行 ID 不含分类字段。
         val categoryId = categoryById[categoryRaw]?.id
             ?: categoryByName[categoryRaw]?.id
+            ?: matchCategoryKeywords(categoryRaw)
             ?: "system-other"
         return ParsedRow(amountMinor = amountMinor, type = type, categoryId = categoryId)
     }
@@ -311,13 +315,37 @@ object TableTransactionImporter {
 
 
 
+    /**
+     * 平台账单类目 → 系统分类的关键词映射（声明顺序即匹配优先级）。
+     * 支付宝/微信的类目名与系统分类名不同（如“餐饮美食”“交通出行”“日用百货”），
+     * 精确匹配会落空；这里按“账单类目包含关键词”命中，未命中仍归 system-other。
+     */
+    private val CATEGORY_KEYWORDS: List<Pair<String, List<String>>> = listOf(
+        "system-food" to listOf("餐饮", "美食", "外卖", "夜宵"),
+        "system-transport" to listOf("交通", "出行", "打车", "公交", "地铁", "加油", "火车", "机票", "网约车"),
+        "system-daily-needs" to listOf("日用", "生活服务", "家政"),
+        "system-shopping" to listOf("购物", "服饰", "装扮", "淘宝", "京东", "拼多多", "天猫", "百货", "商超"),
+        "system-entertainment" to listOf("娱乐", "文化", "休闲", "游戏", "电影", "演出"),
+        "system-travel" to listOf("旅行", "旅游", "酒店", "住宿", "度假"),
+        "system-learning" to listOf("教育", "学习", "培训", "书籍", "书刊"),
+        "system-digital" to listOf("数码", "电器", "电子", "话费", "通讯", "充值"),
+        "system-income" to listOf("工资", "薪酬", "劳务报酬"),
+    )
+
+    /** 按关键词把账单类目映射到系统分类 ID；未命中返回 null（由调用方兜底 system-other）。 */
+    private fun matchCategoryKeywords(categoryRaw: String): String? {
+        val text = categoryRaw.trim()
+        if (text.isEmpty()) return null
+        return CATEGORY_KEYWORDS.firstOrNull { (_, keywords) -> keywords.any { text.contains(it) } }?.first
+    }
+
     private fun isPlaceholder(text: String): Boolean {
         val trimmed = text.trim()
         return trimmed.isEmpty() || trimmed == "/" || trimmed == "-" || trimmed == "—" ||
             trimmed == "无" || trimmed == "暂无"
     }
 
-    /** 生成稳定行 ID 用于去重：优先业务订单号；否则由时间/金额/方向/内容指纹派生。 */
+    /** 生成稳定行 ID 用于去重；算法本体在 shared 的 StableRowId，与 Swift 端逐字节一致。 */
     private fun stableRowId(
         orderId: String,
         dateMillis: Long,
@@ -325,18 +353,14 @@ object TableTransactionImporter {
         type: TransactionType,
         note: String,
         counterparty: String,
-    ): String {
-        val clean = { text: String -> text.trim().replace(Regex("\\s+"), "") }
-        if (orderId.isNotBlank()) return "bill-" + clean(orderId).take(64)
-        val parts = listOf(
-            dateMillis.toString(),
-            amountMinor.toString(),
-            if (type == TransactionType.INCOME) "in" else "out",
-            clean(note).take(48),
-            clean(counterparty).take(24),
-        ).filter { it.isNotEmpty() }
-        return "bill-" + parts.joinToString("|").hashCode().toUInt().toString(16)
-    }
+    ): String = StableRowId.generate(
+        orderId = orderId,
+        dateMillis = dateMillis,
+        amountMinor = amountMinor,
+        type = type,
+        note = note,
+        counterparty = counterparty,
+    )
 
     // MARK: - 列头别名
 
@@ -345,7 +369,7 @@ object TableTransactionImporter {
         "amount_minor" to listOf("amount_minor", "金额分", "金额(分)", "金额(最小单位)"),
         "amount" to listOf("amount", "金额", "金额元", "金额(元)"),
         "type" to listOf("type", "类型", "收支", "收支类型", "收/支", "收支"),
-        "category_id" to listOf("category_id", "分类id", "分类", "分类名称", "分类编号", "标签"),
+        "category_id" to listOf("category_id", "分类id", "分类", "分类名称", "分类编号", "标签", "交易分类", "消费分类", "账单分类"),
         "account_id" to listOf("account_id", "账户", "账户id", "账号", "银行卡", "支付方式", "收付款方式", "付款方式"),
         "date" to listOf("date", "时间", "日期", "日期时间", "记账时间", "交易时间", "时间戳"),
         "order_id" to listOf("order_id", "交易单号", "交易订单号", "商户单号", "商家订单号", "订单号", "流水号"),
