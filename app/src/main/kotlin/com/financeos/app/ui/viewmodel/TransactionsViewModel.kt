@@ -1,5 +1,6 @@
 package com.financeos.app.ui.viewmodel
 
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.financeos.shared.domain.model.Category
@@ -13,7 +14,11 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,9 +29,10 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** 流水列表单行展示状态。 */
+@Immutable
 data class TransactionItemUiState(
     val id: String,
     val categoryId: String,
@@ -41,7 +47,17 @@ data class TransactionItemUiState(
     val type: TransactionType,
     /** 排序使用的原始最小货币单位金额，展示仍统一走 [amountText]。 */
     val amountMinor: Long = 0L,
-)
+) {
+    val detailText = buildString {
+        append(typeLabel)
+        append(" · ")
+        append(dateTimeText)
+        if (accountId != null) {
+            append(" · ")
+            append(accountId)
+        }
+    }
+}
 
 /** 账户管理尚未进入 v0.2，筛选直接表达现有流水中的 accountId。 */
 sealed interface AccountFilter {
@@ -78,8 +94,6 @@ data class TransactionsUiState(
     val hasActiveFilters: Boolean = false,
     val pendingDeleteItem: TransactionItemUiState? = null,
     val isDeleting: Boolean = false,
-    val pendingCategoryItem: TransactionItemUiState? = null,
-    val isUpdatingCategory: Boolean = false,
     val errorMessage: String? = null,
 )
 
@@ -111,9 +125,8 @@ class TransactionsViewModel(
     val events: Flow<TransactionsEvent> = _events.receiveAsFlow()
 
     private var observationJob: Job? = null
-    private var allItems: List<TransactionItemUiState> = emptyList()
-    private var accountOptions: List<TransactionFilterOption> = emptyList()
-    private var transactionsById: Map<String, Transaction> = emptyMap()
+    private var filterJob: Job? = null
+    private var mappedTransactions: MappedTransactions? = null
 
     init {
         refresh()
@@ -122,15 +135,16 @@ class TransactionsViewModel(
     /** 重新订阅当前月份；Room Flow 会继续自动响应后续新增和删除。 */
     fun refresh() {
         observationJob?.cancel()
+        filterJob?.cancel()
+        mappedTransactions = null
+        _uiState.update { it.copy(isLoading = true, errorMessage = null) }
         observationJob = viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             try {
                 val period = selectedMonth.toMonthPeriod(zoneId)
                 combine(
                     getMonthlyTransactions.observe(period),
                     categoryRepository.observeAll(),
                 ) { transactions, categories ->
-                    transactionsById = transactions.associateBy(Transaction::id)
                     val categoriesById = categories.associateBy(Category::id)
                     MappedTransactions(
                         items = transactions.map { transaction ->
@@ -150,16 +164,14 @@ class TransactionsViewModel(
                     // 日期格式化和 Entity 对应的 UI 映射不会阻塞 LazyColumn 的主线程绘制。
                     .flowOn(Dispatchers.Default)
                     .collect { mapped ->
-                    _uiState.update { current ->
-                        current.copy(categoryOptions = mapped.categoryOptions)
+                        mappedTransactions = mapped
+                        applyFilters()
                     }
-                    allItems = mapped.items
-                    accountOptions = mapped.accountOptions
-                    applyFilters(isLoading = false)
-                }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
+                filterJob?.cancel()
+                mappedTransactions = null
                 _uiState.update {
                     it.copy(isLoading = false, errorMessage = "流水加载失败，请稍后重试")
                 }
@@ -177,7 +189,7 @@ class TransactionsViewModel(
 
     fun updateSearchQuery(query: String) {
         _uiState.update { it.copy(searchQuery = query) }
-        applyFilters()
+        applyFilters(delayForTyping = query.isNotBlank())
     }
 
     fun selectType(type: TransactionType?) {
@@ -219,43 +231,6 @@ class TransactionsViewModel(
     }
 
 
-    fun requestRecategorize(transactionId: String) {
-        if (_uiState.value.isUpdatingCategory) return
-        val item = _uiState.value.items.firstOrNull { it.id == transactionId } ?: return
-        _uiState.update { it.copy(pendingCategoryItem = item) }
-    }
-
-    fun dismissRecategorize() {
-        if (!_uiState.value.isUpdatingCategory) {
-            _uiState.update { it.copy(pendingCategoryItem = null) }
-        }
-    }
-
-    /** 把指定流水改到新分类（保持其余字段不变），供导入账单后手动归类。 */
-    fun applyRecategorize(categoryId: String) {
-        val item = _uiState.value.pendingCategoryItem ?: return
-        if (_uiState.value.isUpdatingCategory) return
-        val transaction = transactionsById[item.id] ?: run {
-            _uiState.update { it.copy(pendingCategoryItem = null) }
-            return
-        }
-        viewModelScope.launch {
-            _uiState.update { it.copy(isUpdatingCategory = true) }
-            try {
-                val updated = transaction.copy(categoryId = categoryId)
-                transactionRepository.delete(item.id)
-                transactionRepository.add(updated)
-                _uiState.update { it.copy(pendingCategoryItem = null, isUpdatingCategory = false) }
-                _events.send(TransactionsEvent.ShowMessage("已把该笔改到新分类"))
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Exception) {
-                _uiState.update { it.copy(isUpdatingCategory = false) }
-                _events.send(TransactionsEvent.ShowMessage("分类更新失败，请稍后重试"))
-            }
-        }
-    }
-
     fun dismissDelete() {
         if (!_uiState.value.isDeleting) {
             _uiState.update { it.copy(pendingDeleteItem = null) }
@@ -289,7 +264,6 @@ class TransactionsViewModel(
 
     private fun selectMonth(month: YearMonth) {
         selectedMonth = minOf(month, latestAllowedMonth)
-        allItems = emptyList()
         _uiState.update {
             it.copy(
                 monthLabel = monthFormatter.format(selectedMonth),
@@ -301,32 +275,41 @@ class TransactionsViewModel(
         refresh()
     }
 
-    /** 在已映射的月度列表上先组合条件、再按选中排序输出，避免输入关键词时反复访问数据库或格式化日期。 */
-    private fun applyFilters(isLoading: Boolean = _uiState.value.isLoading) {
-        val state = _uiState.value
-        val query = state.searchQuery.trim()
-        val filteredItems = filterTransactionItems(
-            items = allItems,
-            searchQuery = query,
-            selectedType = state.selectedType,
-            selectedCategoryId = state.selectedCategoryId,
-            selectedAccount = state.selectedAccount,
-        )
-        val sortedItems = sortTransactionItems(filteredItems, state.amountSort)
-        _uiState.update { current ->
-            current.copy(
-                isLoading = isLoading,
-                items = sortedItems,
-                accountOptions = accountOptions,
-                hasActiveFilters = query.isNotEmpty() ||
-                    current.selectedType != null ||
-                    current.selectedCategoryId != null ||
-                    current.selectedAccount != AccountFilter.All,
-                pendingDeleteItem = current.pendingDeleteItem?.takeIf { pending ->
-                    sortedItems.any { it.id == pending.id }
-                },
-                errorMessage = null,
-            )
+    /** 搜索和排序使用最新快照，切月或继续输入时取消旧结果。 */
+    private fun applyFilters(delayForTyping: Boolean = false) {
+        val mapped = mappedTransactions ?: return
+        val filters = _uiState.value
+        val query = filters.searchQuery.trim()
+        filterJob?.cancel()
+        filterJob = viewModelScope.launch {
+            if (delayForTyping) delay(100)
+            val items = withContext(Dispatchers.Default) {
+                val filtered = filterTransactionItems(
+                    items = mapped.items,
+                    searchQuery = query,
+                    selectedType = filters.selectedType,
+                    selectedCategoryId = filters.selectedCategoryId,
+                    selectedAccount = filters.selectedAccount,
+                )
+                currentCoroutineContext().ensureActive()
+                sortTransactionItems(filtered, filters.amountSort)
+            }
+            _uiState.update { current ->
+                current.copy(
+                    isLoading = false,
+                    items = items,
+                    categoryOptions = mapped.categoryOptions,
+                    accountOptions = mapped.accountOptions,
+                    hasActiveFilters = query.isNotEmpty() ||
+                        filters.selectedType != null ||
+                        filters.selectedCategoryId != null ||
+                        filters.selectedAccount != AccountFilter.All,
+                    pendingDeleteItem = current.pendingDeleteItem?.takeIf { pending ->
+                        items.any { it.id == pending.id }
+                    },
+                    errorMessage = null,
+                )
+            }
         }
     }
 
@@ -382,7 +365,9 @@ private data class MappedTransactions(
     val accountOptions: List<TransactionFilterOption>,
 )
 
-/** 组合备注、收支、分类和账户条件，供 ViewModel 与单元测试复用。 */
+private val searchWhitespace = Regex("\\s+")
+
+/** 搜索与收支、分类、账户筛选叠加使用。 */
 internal fun filterTransactionItems(
     items: List<TransactionItemUiState>,
     searchQuery: String,
@@ -390,9 +375,18 @@ internal fun filterTransactionItems(
     selectedCategoryId: String?,
     selectedAccount: AccountFilter,
 ): List<TransactionItemUiState> {
-    val query = searchQuery.trim()
+    val terms = searchQuery.trim().splitToSequence(searchWhitespace).filter { it.isNotEmpty() }.toList()
+    if (terms.isEmpty() && selectedType == null && selectedCategoryId == null && selectedAccount == AccountFilter.All) {
+        return items
+    }
     return items.filter { item ->
-        (query.isEmpty() || item.note?.contains(query, ignoreCase = true) == true) &&
+        terms.all { term ->
+            item.note?.contains(term, ignoreCase = true) == true ||
+                item.categoryName.contains(term, ignoreCase = true) ||
+                item.accountId?.contains(term, ignoreCase = true) == true ||
+                item.dateTimeText.contains(term, ignoreCase = true) ||
+                item.amountText.contains(term, ignoreCase = true)
+        } &&
             (selectedType == null || item.type == selectedType) &&
             (selectedCategoryId == null || item.categoryId == selectedCategoryId) &&
             when (selectedAccount) {

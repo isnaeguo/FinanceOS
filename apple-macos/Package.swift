@@ -15,6 +15,8 @@ let package = Package(
             path: "Tests/FinanceOSChecks",
             linkerSettings: [
                 .linkedLibrary("sqlite3"),
+                .linkedLibrary("c++"),
+                .linkedLibrary("z"),
             ]
         ),
         .binaryTarget(

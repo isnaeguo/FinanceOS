@@ -45,14 +45,24 @@ class LocalBudgetRepository(
         .map { entities -> entities.map { it.toDomain() } }
         .flowOn(Dispatchers.Default)
 
-    /** 保存预算；未显式携带修改时间的记录打上当前时间，使本地编辑在合并中胜过旧数据。 */
+    /** 按预算范围原子保存，保存后继续使用此范围的已有 ID。 */
+    @Throws(Exception::class)
     override suspend fun save(budget: Budget) {
         val now = clock.nowMillis()
         require(budget.deletedAt == null || budget.deletedAt <= now) {
             "Budget deletedAt must not be in the future."
         }
-        dao.save(
+        dao.saveLocal(
             (if (budget.updatedAt == 0L) budget.copy(updatedAt = now) else budget).toEntity(),
         )
+    }
+
+    /** 软删指定范围的预算，使删除能随快照同步。 */
+    @Throws(Exception::class)
+    suspend fun delete(month: BudgetMonth, categoryId: String?): Boolean {
+        require(categoryId == null || categoryId.isNotBlank()) {
+            "Budget categoryId must be null or non-blank."
+        }
+        return dao.softDelete(month.year, month.month, categoryKey(categoryId), clock.nowMillis()) > 0
     }
 }

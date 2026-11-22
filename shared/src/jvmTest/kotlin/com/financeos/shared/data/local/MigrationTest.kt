@@ -37,6 +37,9 @@ class MigrationTest {
                 assertEquals("午饭", transaction?.note)
                 assertEquals(1_786_350_600_000L, transaction?.updatedAt)
                 assertNull(transaction?.deletedAt)
+                val preEpoch = database.transactionDao().getById("tx-pre-epoch")
+                assertEquals(-1_000L, preEpoch?.dateTimeEpochMillis)
+                assertEquals(0L, preEpoch?.updatedAt)
 
                 // 分类与预算数据无损，updated_at 回填 0。
                 val category = database.categoryDao().getAllIncludingDeleted().single()
@@ -51,7 +54,7 @@ class MigrationTest {
 
                 // 快照与合并链路在迁移后的库上可用。
                 val snapshot = LocalFinanceDataRepository(database).snapshot()
-                assertEquals(listOf("tx-1"), snapshot.transactions.map { it.id })
+                assertEquals(listOf("tx-1", "tx-pre-epoch"), snapshot.transactions.map { it.id })
             } finally {
                 database.close()
             }
@@ -60,7 +63,7 @@ class MigrationTest {
         }
     }
 
-    /** 按导出的 v1 schema 原样建表并写入一行流水、一个分类、一个预算，最后把版本号钉在 1。 */
+    /** 按导出的 v1 schema 建表并写入样例，最后把版本号设为 1。 */
     private fun createV1Database(path: String) {
         val connection: SQLiteConnection = BundledSQLiteDriver().open(path)
         try {
@@ -96,7 +99,8 @@ class MigrationTest {
             connection.execSQL(
                 """
                 INSERT INTO transactions (id, amount_minor, type, category_id, account_id, date_time_epoch_millis, note)
-                VALUES ('tx-1', 2350, 'EXPENSE', 'system-food', NULL, 1786350600000, '午饭')
+                VALUES ('tx-1', 2350, 'EXPENSE', 'system-food', NULL, 1786350600000, '午饭'),
+                       ('tx-pre-epoch', 123, 'EXPENSE', 'system-food', NULL, -1000, '历史流水')
                 """.trimIndent(),
             )
             connection.execSQL(

@@ -10,8 +10,7 @@ final class TransactionDraft {
     var date = Date()
     var account = ""
     var note = ""
-    /// 正在编辑的流水 ID；`nil` 表示新增。
-    var editingId: String?
+    private(set) var original: Transaction?
 
     static func new() -> TransactionDraft { TransactionDraft() }
 
@@ -23,7 +22,7 @@ final class TransactionDraft {
         draft.date = transaction.dateTime
         draft.account = transaction.accountId ?? ""
         draft.note = transaction.note ?? ""
-        draft.editingId = transaction.id
+        draft.original = transaction
         return draft
     }
 
@@ -35,12 +34,12 @@ final class TransactionDraft {
         parsedAmount != nil && categoryId != nil && date <= Date().addingTimeInterval(1)
     }
 
-    func save(to store: FinanceStore) {
-        guard let amount = parsedAmount, let categoryId else { return }
+    func save(to store: FinanceStore) async throws -> Bool {
+        guard let amount = parsedAmount, let categoryId else { return false }
         let note = note.trimmingCharacters(in: .whitespaces)
         let account = account.trimmingCharacters(in: .whitespaces)
         let transaction = Transaction(
-            id: editingId ?? UUID().uuidString,
+            id: original?.id ?? UUID().uuidString,
             amount: amount,
             type: type,
             categoryId: categoryId,
@@ -48,17 +47,13 @@ final class TransactionDraft {
             dateTime: date,
             note: note.isEmpty ? nil : note
         )
-        if editingId != nil {
-            store.updateTransaction(transaction)
-        } else {
-            store.addTransaction(transaction)
-        }
+        return try await store.saveTransaction(transaction, expected: original)
     }
 
     /// 金额仅用于回填展示：整数部分 + 两位小数，不经过 Double。
     private static func formatMajorPlain(_ minor: Int64) -> String {
         let magnitude = abs(minor)
-        return "\(magnitude / 100).\(String(format: "%02d", magnitude % 100))"
+        return "\(magnitude / 100).\(String(format: "%02lld", magnitude % 100))"
     }
 }
 
@@ -68,6 +63,8 @@ struct AddTransactionSheet: View {
     @State var draft: TransactionDraft
 
     @State private var previousAmountText = ""
+    @State private var saving = false
+    @State private var saveError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -80,6 +77,8 @@ struct AddTransactionSheet: View {
         .padding(24)
         .frame(width: 520)
         .frame(minHeight: 600)
+        .disabled(saving)
+        .interactiveDismissDisabled(saving)
         .onAppear {
             if draft.categoryId == nil {
                 draft.categoryId = store.categories(for: draft.type).first?.id
@@ -105,7 +104,7 @@ struct AddTransactionSheet: View {
             set: { newValue in
                 draft.type = newValue
                 // 切换方向后，当前分类必须仍然可用。
-                if let category = store.category(id: draft.categoryId), !category.accepts(newValue) {
+                if store.category(id: draft.categoryId)?.accepts(newValue) != true {
                     draft.categoryId = store.categories(for: newValue).first?.id
                 }
             }
@@ -126,7 +125,7 @@ struct AddTransactionSheet: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: 18))
+        .background(Color(nsColor: .controlBackgroundColor), in: .rect(cornerRadius: 12))
     }
 
     private var amountBinding: Binding<String> {
@@ -233,14 +232,14 @@ struct AddTransactionSheet: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: 18))
+        .background(Color(nsColor: .controlBackgroundColor), in: .rect(cornerRadius: 12))
     }
 
     // MARK: - 底部操作
 
     private var footer: some View {
         HStack {
-            if let error = validationError {
+            if let error = saveError ?? validationError {
                 Text(error)
                     .font(.caption)
                     .foregroundStyle(.red)
@@ -248,13 +247,25 @@ struct AddTransactionSheet: View {
             Spacer()
             Button("取消") { dismiss() }
                 .keyboardShortcut(.cancelAction)
-            Button(draft.editingId == nil ? "保存" : "更新") {
-                draft.save(to: store)
-                dismiss()
+            Button(draft.original == nil ? "保存" : "更新") {
+                saving = true
+                saveError = nil
+                Task {
+                    defer { saving = false }
+                    do {
+                        if try await draft.save(to: store) {
+                            dismiss()
+                        } else {
+                            saveError = "流水已变更，请重新打开后编辑。"
+                        }
+                    } catch {
+                        saveError = error.localizedDescription
+                    }
+                }
             }
-            .buttonStyle(.glassProminent)
+            .buttonStyle(.borderedProminent)
             .keyboardShortcut(.defaultAction)
-            .disabled(!draft.isValid)
+            .disabled(!draft.isValid || store.category(id: draft.categoryId)?.accepts(draft.type) != true)
         }
     }
 

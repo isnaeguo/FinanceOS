@@ -1,47 +1,60 @@
 package com.financeos.shared.data.transfer.table
 
+import com.financeos.shared.data.transfer.DataTransferException
+
 /**
- * 读取 ZIP 压缩包内全部条目（XLSX 本质是 ZIP），返回"条目名 → 原始内容"映射。
- *
- * 采用纯 Kotlin 实现保证三端字节一致：手工解析 ZIP 中央目录，对方法 8（deflate）条目
- * 用内置的 raw-inflate 解码，方法与 Android `ZipInputStream` 读取同一份 XLSX 得到的内容一致；
- * 目录条目与不支持的压缩条目静默跳过，由上层按缺文件报错。
+ * 从 XLSX 压缩包读取工作簿 XML 条目，忽略媒体、附件和其他无关数据。
+ * 对支持的存储和 Deflate 压缩条目校验文件边界与解压长度。
  */
 object ZipArchiveReader {
     fun readEntries(bytes: ByteArray): Map<String, ByteArray> {
         val entries = mutableMapOf<String, ByteArray>()
         val central = locateCentralDirectory(bytes) ?: return entries
+        if (central.entryCount > 4_096) invalidArchive()
         var offset = central.offset
+        var totalSize = 0L
         repeat(central.entryCount) {
-            if (offset + 46 > bytes.size) return entries
-            if (readUInt32(bytes, offset) != 0x02014B50L) return entries
+            if (offset < 0 || offset > bytes.size - 46 || readUInt32(bytes, offset) != 0x02014B50L) invalidArchive()
+            val flags = readUInt16(bytes, offset + 8).toInt()
             val method = readUInt16(bytes, offset + 10).toInt()
-            val compressedSize = readUInt32(bytes, offset + 20).toInt()
-            val uncompressedSize = readUInt32(bytes, offset + 24).toInt()
+            val compressedSize = readUInt32(bytes, offset + 20)
+            val uncompressedSize = readUInt32(bytes, offset + 24)
             val nameLength = readUInt16(bytes, offset + 28).toInt()
             val extraLength = readUInt16(bytes, offset + 30).toInt()
             val commentLength = readUInt16(bytes, offset + 32).toInt()
-            val localHeaderOffset = readUInt32(bytes, offset + 42).toInt()
-            val name = bytes.decodeToString(offset + 46, offset + 46 + nameLength)
-
-            val content = run {
-                if (localHeaderOffset + 30 > bytes.size) return@run null
-                val localNameLength = readUInt16(bytes, localHeaderOffset + 26).toInt()
-                val localExtraLength = readUInt16(bytes, localHeaderOffset + 28).toInt()
-                val dataStart = localHeaderOffset + 30 + localNameLength + localExtraLength
-                if (dataStart + compressedSize > bytes.size) return@run null
-                val raw = bytes.copyOfRange(dataStart, dataStart + compressedSize)
-                when (method) {
-                    0 -> raw
-                    8 -> inflateRaw(raw, uncompressedSize)
-                    else -> null
-                }
+            val localOffset = readUInt32(bytes, offset + 42)
+            val next = offset.toLong() + 46 + nameLength + extraLength + commentLength
+            if (next > bytes.size) invalidArchive()
+            val name = bytes.decodeToString(offset + 46, offset + 46 + nameLength).removePrefix("/")
+            offset = next.toInt()
+            if (!name.startsWith("xl/") || !(name.endsWith(".xml") || name.endsWith(".rels"))) return@repeat
+            if (flags and 1 != 0) {
+                throw DataTransferException("账单压缩包已加密，请先解压再导入。")
             }
-            if (content != null) entries[name.removePrefix("/")] = content
-            offset += 46 + nameLength + extraLength + commentLength
+            totalSize += uncompressedSize
+            if (uncompressedSize > MAX_PART_BYTES || totalSize > MAX_ARCHIVE_BYTES) {
+                throw DataTransferException("XLSX 解压后过大，请按时间范围拆分再导入。")
+            }
+            if (localOffset > bytes.size - 30L) invalidArchive()
+            val local = localOffset.toInt()
+            if (readUInt32(bytes, local) != 0x04034B50L) invalidArchive()
+            val dataStart = localOffset + 30 + readUInt16(bytes, local + 26) + readUInt16(bytes, local + 28)
+            if (dataStart + compressedSize > bytes.size) invalidArchive()
+            val raw = bytes.copyOfRange(dataStart.toInt(), (dataStart + compressedSize).toInt())
+            val content = when (method) {
+                0 -> raw.takeIf { it.size.toLong() == uncompressedSize }
+                8 -> inflateRaw(raw, uncompressedSize.toInt())
+                else -> null
+            } ?: invalidArchive()
+            if (entries.put(name, content) != null) invalidArchive()
         }
         return entries
     }
+
+    private const val MAX_PART_BYTES = 32L * 1024 * 1024
+    private const val MAX_ARCHIVE_BYTES = 64L * 1024 * 1024
+
+    private fun invalidArchive(): Nothing = throw DataTransferException("XLSX 压缩包损坏或无法读取。")
 
     private class CentralDirectory(val offset: Int, val entryCount: Int)
 
@@ -54,7 +67,10 @@ object ZipArchiveReader {
             if (readUInt32(bytes, index) == 0x06054B50L) {
                 val entryCount = readUInt16(bytes, index + 10).toInt()
                 val offset = readUInt32(bytes, index + 16).toInt()
-                if (offset in 0 until bytes.size) return CentralDirectory(offset, entryCount)
+                val commentLength = readUInt16(bytes, index + 20)
+                if (index + 22 + commentLength == bytes.size.toLong() && offset in 0..index) {
+                    return CentralDirectory(offset, entryCount)
+                }
             }
             index -= 1
         }
@@ -99,7 +115,7 @@ object ZipArchiveReader {
                 blockFinal = readBits(1) == 1
                 when (readBits(2)) {
                     0 -> readStoredBlock()
-                    1 -> inflateHuffman(fixedLiteralTable(), fixedDistanceTable())
+                    1 -> inflateHuffman(fixedLiteralTable, fixedDistanceTable)
                     2 -> {
                         val tables = readDynamicTables()
                         inflateHuffman(tables.first, tables.second)
@@ -108,6 +124,7 @@ object ZipArchiveReader {
                     else -> throw IllegalStateException("非法 deflate 块类型")
                 }
             } while (!blockFinal)
+            check(outputIndex == outputSize) { "解压后的数据长度不符" }
             return output
         }
 
@@ -316,17 +333,14 @@ object ZipArchiveReader {
         7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13,
     )
 
-    private fun fixedLiteralTable(): HuffmanTable {
+    private val fixedLiteralTable by lazy {
         val lengths = IntArray(288)
         for (symbol in 0..143) lengths[symbol] = 8
         for (symbol in 144..255) lengths[symbol] = 9
         for (symbol in 256..279) lengths[symbol] = 7
         for (symbol in 280..287) lengths[symbol] = 8
-        return buildTable(lengths)
+        buildTable(lengths)
     }
 
-    private fun fixedDistanceTable(): HuffmanTable {
-        val lengths = IntArray(30) { 5 }
-        return buildTable(lengths)
-    }
+    private val fixedDistanceTable by lazy { buildTable(IntArray(32) { 5 }) }
 }

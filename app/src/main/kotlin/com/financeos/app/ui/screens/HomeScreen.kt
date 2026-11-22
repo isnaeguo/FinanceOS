@@ -1,14 +1,7 @@
 package com.financeos.app.ui.screens
 
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -18,13 +11,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -32,20 +23,18 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedCard
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -54,10 +43,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LifecycleResumeEffect
-import com.financeos.app.ui.components.GlassCard
-import com.financeos.app.ui.components.GlassIconCircle
-import com.financeos.app.ui.components.glassCardSecondaryText
-import com.financeos.app.ui.components.glassHaze
+import com.financeos.app.ui.components.FinanceCard
+import com.financeos.app.ui.components.CategoryBadge
 import com.financeos.app.ui.components.EmptyState
 import com.financeos.app.ui.components.LoadingState
 import com.financeos.app.ui.components.MonthSelector
@@ -139,7 +126,7 @@ internal fun HomeScreen(
                     end = 16.dp,
                     bottom = 104.dp,
                 ),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 item {
                     MonthSelector(
@@ -154,25 +141,10 @@ internal fun HomeScreen(
                     MonthlyOverviewCard(uiState)
                 }
                 item {
-                    DashboardMetrics(uiState)
-                }
-                if (uiState.isCurrentMonth) {
-                    item {
-                        Text(
-                            text = uiState.dailyAvailableExplanation,
-                            color = glassCardSecondaryText(),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                }
-                item {
                     BudgetProgressCard(
                         uiState = uiState,
                         onOpenBudget = onOpenBudget,
                     )
-                }
-                item {
-                    SectionTitle(title = "近 6 个月支出")
                 }
                 item {
                     MonthlyTrendCard(points = uiState.monthlyExpenseTrend)
@@ -197,8 +169,20 @@ internal fun HomeScreen(
                         onAction = onOpenTransactions,
                     )
                 }
-                item {
-                    RecentTransactionsCard(transactions = uiState.recentTransactions)
+                if (uiState.recentTransactions.isEmpty()) {
+                    item {
+                        FinanceCard(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = "暂无最近流水。",
+                                modifier = Modifier.padding(16.dp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                } else {
+                    items(uiState.recentTransactions, key = DashboardTransactionUiState::id) { transaction ->
+                        RecentTransactionRow(transaction)
+                    }
                 }
             }
         }
@@ -207,46 +191,32 @@ internal fun HomeScreen(
 
 @Composable
 private fun MonthlyTrendCard(points: List<DashboardTrendPointUiState>) {
-    GlassCard(
+    FinanceCard(
         modifier = Modifier.fillMaxWidth(),
     ) {
-        if (points.isEmpty() || points.all { it.progress == 0f }) {
-            Text(
-                text = "最近 6 个月还没有支出趋势。",
-                modifier = Modifier.padding(20.dp),
-                color = glassCardSecondaryText(),
-            )
-            return@GlassCard
-        }
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            Text("近 6 个月净支出", style = MaterialTheme.typography.titleMedium)
+            if (points.none { it.normalizedAmount != 0f }) {
+                Text("各月净支出均为零。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                return@Column
+            }
             val stackRows = LocalDensity.current.fontScale >= 1.5f
             points.forEach { point ->
-                val animatedProgress by animateFloatAsState(
-                    targetValue = point.progress,
-                    animationSpec = tween(
-                        durationMillis = CHART_ANIMATION_DURATION_MILLIS,
-                        easing = FastOutSlowInEasing,
-                    ),
-                    label = "monthlyTrend",
-                )
                 if (stackRows) {
                     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
-                            Text(point.label, color = glassCardSecondaryText(), style = MaterialTheme.typography.labelMedium)
-                            Text(point.amountText, color = glassCardSecondaryText(), style = MaterialTheme.typography.labelMedium)
+                            Text(point.label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+                            Text(point.amountText, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
                         }
-                        LinearProgressIndicator(
-                            progress = { animatedProgress },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
+                        SignedTrendBar(point.normalizedAmount, Modifier.fillMaxWidth())
                     }
                 } else {
                     Row(
@@ -257,17 +227,14 @@ private fun MonthlyTrendCard(points: List<DashboardTrendPointUiState>) {
                         Text(
                             point.label,
                             modifier = Modifier.weight(0.16f),
-                            color = glassCardSecondaryText(),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.labelMedium,
                         )
-                        LinearProgressIndicator(
-                            progress = { animatedProgress },
-                            modifier = Modifier.weight(0.54f),
-                        )
+                        SignedTrendBar(point.normalizedAmount, Modifier.weight(0.54f))
                         Text(
                             point.amountText,
                             modifier = Modifier.weight(0.3f),
-                            color = glassCardSecondaryText(),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.labelMedium,
                         )
                     }
@@ -278,12 +245,31 @@ private fun MonthlyTrendCard(points: List<DashboardTrendPointUiState>) {
 }
 
 @Composable
+private fun SignedTrendBar(amount: Float, modifier: Modifier) {
+    val colors = MaterialTheme.colorScheme
+    val barColor = if (amount < 0f) colors.secondary else colors.primary
+    Box(
+        modifier = modifier
+            .height(10.dp)
+            .drawBehind {
+                val center = Offset(size.width / 2, size.height / 2)
+                val barWidth = 4.dp.toPx()
+                drawLine(colors.surfaceVariant, Offset(0f, center.y), Offset(size.width, center.y), barWidth)
+                if (amount != 0f) {
+                    drawLine(barColor, center, Offset(center.x * (1f + amount), center.y), barWidth)
+                }
+                drawLine(colors.outline, Offset(center.x, 0f), Offset(center.x, size.height), 1.dp.toPx())
+            },
+    )
+}
+
+@Composable
 private fun SpendingTrendCard(
     points: List<DashboardTrendPointUiState>,
     range: SpendingTrendRange,
     onRangeSelected: (SpendingTrendRange) -> Unit,
 ) {
-    GlassCard(
+    FinanceCard(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
@@ -293,7 +279,7 @@ private fun SpendingTrendCard(
             Column(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Text("近期消费趋势", color = glassCardSecondaryText(), style = MaterialTheme.typography.titleMedium)
+                Text("近期净支出趋势", style = MaterialTheme.typography.titleMedium)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     SpendingTrendRange.entries.forEach { option ->
                         FilterChip(
@@ -304,10 +290,10 @@ private fun SpendingTrendCard(
                     }
                 }
             }
-            if (points.isEmpty() || points.all { it.progress == 0f }) {
+            if (points.none { it.normalizedAmount != 0f }) {
                 Text(
-                    text = "${range.label}还没有支出。",
-                    color = glassCardSecondaryText(),
+                    text = "${range.label}净支出为零。",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
                 ExpenseLineChart(points)
@@ -315,8 +301,8 @@ private fun SpendingTrendCard(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Text(points.first().label, color = glassCardSecondaryText(), style = MaterialTheme.typography.labelSmall)
-                    Text(points.last().label, color = glassCardSecondaryText(), style = MaterialTheme.typography.labelSmall)
+                    Text(points.first().label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+                    Text(points.last().label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
                 }
             }
         }
@@ -325,130 +311,65 @@ private fun SpendingTrendCard(
 
 @Composable
 private fun ExpenseLineChart(points: List<DashboardTrendPointUiState>) {
-    val animation = remember { Animatable(0f) }
-    val path = remember { Path() }
     val lineColor = MaterialTheme.colorScheme.primary
     val baselineColor = MaterialTheme.colorScheme.outlineVariant
-    LaunchedEffect(points) {
-        animation.snapTo(0f)
-        animation.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(
-                durationMillis = CHART_ANIMATION_DURATION_MILLIS,
-                easing = FastOutSlowInEasing,
-            ),
-        )
-    }
-
-    Canvas(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(132.dp)
             .semantics {
-                contentDescription = "支出趋势，从 ${points.first().label} 到 ${points.last().label}"
+                contentDescription = "净支出趋势，从 ${points.first().label} 到 ${points.last().label}。零线下方为净收入。"
+            }
+            .drawWithCache {
+                val minAmount = minOf(0f, points.minOf { it.normalizedAmount })
+                val maxAmount = maxOf(0f, points.maxOf { it.normalizedAmount })
+                val inset = 4.dp.toPx()
+                val chartHeight = (size.height - 2 * inset).coerceAtLeast(0f)
+                fun y(amount: Float): Float = inset + (maxAmount - amount) / (maxAmount - minAmount) * chartHeight
+                val baselineY = y(0f)
+                val coordinates = points.mapIndexed { index, point ->
+                    val x = if (points.size == 1) size.width / 2 else size.width * index / points.lastIndex
+                    Offset(x, y(point.normalizedAmount))
+                }
+                val path = Path().apply {
+                    val first = coordinates.first()
+                    moveTo(first.x, first.y)
+                    for (index in 1..coordinates.lastIndex) {
+                        val point = coordinates[index]
+                        lineTo(point.x, point.y)
+                    }
+                }
+                val markers = coordinates.filterIndexed { index, _ ->
+                    points.size <= 7 || index % 5 == 0 || index == coordinates.lastIndex
+                }
+                val lineStroke = Stroke(2.dp.toPx())
+                val baselineWidth = 1.dp.toPx()
+                val markerRadius = 2.5.dp.toPx()
+                onDrawBehind {
+                    drawLine(baselineColor, Offset(0f, baselineY), Offset(size.width, baselineY), baselineWidth)
+                    drawPath(path, color = lineColor, style = lineStroke)
+                    markers.forEach { drawCircle(lineColor, markerRadius, center = it) }
+                }
             },
-    ) {
-        val baselineY = size.height - 4.dp.toPx()
-        drawLine(
-            color = baselineColor,
-            start = androidx.compose.ui.geometry.Offset(0f, baselineY),
-            end = androidx.compose.ui.geometry.Offset(size.width, baselineY),
-            strokeWidth = 1.dp.toPx(),
-        )
-        path.reset()
-        val coords = points.mapIndexed { index, point ->
-            val x = if (points.size == 1) {
-                size.width / 2f
-            } else {
-                size.width * index.toFloat() / points.lastIndex.toFloat()
-            }
-            val y = baselineY - point.progress * animation.value * (baselineY - 8.dp.toPx())
-            androidx.compose.ui.geometry.Offset(x, y)
-        }
-        // 用三次贝塞尔把相邻点连成平滑曲线（过每个数据点）：每个线段取起点/终点，
-        // 控制点沿前/后相邻点方向，使曲线连续且不过冲。
-        if (coords.isNotEmpty()) {
-            path.moveTo(coords.first().x, coords.first().y)
-            for (index in 1 until coords.size) {
-                val prev = coords[index - 1]
-                val curr = coords[index]
-                val next = if (index + 1 < coords.size) coords[index + 1] else curr
-                val before = if (index - 2 >= 0) coords[index - 2] else prev
-                val cp1 = androidx.compose.ui.geometry.Offset(
-                    x = prev.x + (curr.x - before.x) / 6f,
-                    y = prev.y + (curr.y - before.y) / 6f,
-                )
-                val cp2 = androidx.compose.ui.geometry.Offset(
-                    x = curr.x - (next.x - prev.x) / 6f,
-                    y = curr.y - (next.y - prev.y) / 6f,
-                )
-                path.cubicTo(cp1.x, cp1.y, cp2.x, cp2.y, curr.x, curr.y)
-            }
-        }
-        drawPath(
-            path = path,
-            color = lineColor,
-            style = Stroke(width = 2.5.dp.toPx()),
-        )
-        points.forEachIndexed { index, point ->
-            if (points.size > 7 && index % 5 != 0 && index != points.lastIndex) {
-                return@forEachIndexed
-            }
-            val x = if (points.size == 1) size.width / 2f
-            else size.width * index.toFloat() / points.lastIndex.toFloat()
-            val y = baselineY - point.progress * animation.value * (baselineY - 8.dp.toPx())
-            drawCircle(lineColor, radius = 2.5.dp.toPx(), center = androidx.compose.ui.geometry.Offset(x, y))
-        }
-    }
+    )
 }
 
 @Composable
-private fun DashboardMetrics(uiState: DashboardUiState) {
-    val stackMetrics = LocalDensity.current.fontScale >= 1.5f
-    val monthReference = monthReferenceLabel(uiState)
-    val remainingBudgetCard: @Composable (Modifier) -> Unit = { modifier ->
-        DashboardMetricCard(
-            label = "剩余预算",
-            value = uiState.remainingBudgetText,
-            supportingText = if (uiState.hasBudget) "${monthReference}剩余额度" else "尚未设置预算",
-            isWarning = uiState.isOverBudget,
-            modifier = modifier,
-        )
-    }
-    val dailyAvailableCard: @Composable (Modifier) -> Unit = { modifier ->
-        DashboardMetricCard(
-            label = "今日建议预算",
-            value = uiState.dailyAvailableText,
-            supportingText = "当天固定，次日重算",
-            isWarning = uiState.isOverBudget,
-            modifier = modifier,
-        )
-    }
-
-    GlassCard(
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        if (uiState.isCurrentMonth && stackMetrics) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                remainingBudgetCard(Modifier.fillMaxWidth())
-                HorizontalDivider()
-                dailyAvailableCard(Modifier.fillMaxWidth())
-            }
-        } else if (uiState.isCurrentMonth) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(24.dp),
-            ) {
-                remainingBudgetCard(Modifier.weight(1f))
-                dailyAvailableCard(Modifier.weight(1f))
-            }
-        } else {
-            // 回看过去月份时不展示“今日建议预算”，只保留剩余预算，避免把过去的预算当成今天的可用额度。
-            Column(modifier = Modifier.padding(16.dp)) {
-                remainingBudgetCard(Modifier.fillMaxWidth())
+private fun BudgetSummaryMetrics(uiState: DashboardUiState) {
+    val stacked = LocalDensity.current.fontScale >= 1.5f
+    if (uiState.isCurrentMonth && !stacked) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            DashboardMetric("剩余预算", uiState.remainingBudgetText, uiState.isOverBudget, Modifier.weight(1f))
+            DashboardMetric("今日建议预算", uiState.dailyAvailableText, uiState.isOverBudget, Modifier.weight(1f))
+        }
+    } else {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            DashboardMetric("剩余预算", uiState.remainingBudgetText, uiState.isOverBudget)
+            if (uiState.isCurrentMonth) {
+                DashboardMetric("今日建议预算", uiState.dailyAvailableText, uiState.isOverBudget)
             }
         }
     }
@@ -458,29 +379,18 @@ private fun DashboardMetrics(uiState: DashboardUiState) {
 private fun MonthlyOverviewCard(uiState: DashboardUiState) {
     val stackExpenses = LocalDensity.current.fontScale >= 1.5f
     val monthReference = monthReferenceLabel(uiState)
-    GlassCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .glassHaze(),
+    FinanceCard(
+        modifier = Modifier.fillMaxWidth(),
+        containerColor = MaterialTheme.colorScheme.primaryContainer,
     ) {
         Column(
-            // hero 卡内只叠加极淡的品牌青色调，让光斑从玻璃底透出；不设实体色板。
-            modifier = Modifier
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
-                            Color.Transparent,
-                        ),
-                    ),
-                )
-                .padding(20.dp),
+            modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (stackExpenses) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     ExpenseMetric(
-                        label = "${monthReference}支出",
+                        label = "${monthReference}净支出",
                         value = uiState.monthlyExpenseText,
                         isPrimary = true,
                     )
@@ -499,7 +409,7 @@ private fun MonthlyOverviewCard(uiState: DashboardUiState) {
                     verticalAlignment = Alignment.Bottom,
                 ) {
                     ExpenseMetric(
-                        label = "${monthReference}支出",
+                        label = "${monthReference}净支出",
                         value = uiState.monthlyExpenseText,
                         isPrimary = true,
                         modifier = Modifier.weight(1f),
@@ -514,7 +424,7 @@ private fun MonthlyOverviewCard(uiState: DashboardUiState) {
                 }
             } else {
                 ExpenseMetric(
-                    label = "${monthReference}支出",
+                    label = "${monthReference}净支出",
                     value = uiState.monthlyExpenseText,
                     isPrimary = true,
                 )
@@ -527,12 +437,12 @@ private fun MonthlyOverviewCard(uiState: DashboardUiState) {
             ) {
                 Text(
                     text = "${monthReference}收入",
-                    color = glassCardSecondaryText().copy(alpha = 0.78f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                AnimatedAmountText(
+                AmountText(
                     text = uiState.monthlyIncomeText,
-                    color = glassCardSecondaryText(),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.titleMedium,
                 )
             }
@@ -555,12 +465,12 @@ private fun ExpenseMetric(
     ) {
         Text(
             text = label,
-            color = glassCardSecondaryText().copy(alpha = 0.78f),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.titleMedium,
         )
-        AnimatedAmountText(
+        AmountText(
             text = value,
-            color = glassCardSecondaryText(),
+            color = MaterialTheme.colorScheme.onSurface,
             style = if (isPrimary) {
                 MaterialTheme.typography.headlineLarge
             } else {
@@ -572,59 +482,35 @@ private fun ExpenseMetric(
 }
 
 @Composable
-private fun DashboardMetricCard(
+private fun DashboardMetric(
     label: String,
     value: String,
-    supportingText: String,
     isWarning: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
             text = label,
-            color = glassCardSecondaryText(),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelLarge,
         )
-        AnimatedAmountText(
+        AmountText(
             text = value,
-            color = if (isWarning) {
-                MaterialTheme.colorScheme.error
-            } else {
-                MaterialTheme.colorScheme.onSurface
-            },
+            color = if (isWarning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            text = supportingText,
-            color = glassCardSecondaryText(),
-            style = MaterialTheme.typography.bodySmall,
         )
     }
 }
 
 @Composable
-private fun AnimatedAmountText(
+private fun AmountText(
     text: String,
     color: Color,
     style: TextStyle,
     fontWeight: FontWeight? = null,
 ) {
-    Crossfade(
-        targetState = text,
-        animationSpec = tween(durationMillis = AMOUNT_CROSSFADE_DURATION_MILLIS),
-        label = "dashboardAmount",
-    ) { amount ->
-        Text(
-            text = amount,
-            color = color,
-            style = style.copy(fontFeatureSettings = "tnum"),
-            fontWeight = fontWeight,
-        )
-    }
+    Text(text = text, color = color, style = style.copy(fontFeatureSettings = "tnum"), fontWeight = fontWeight)
 }
 
 @Composable
@@ -632,15 +518,7 @@ private fun BudgetProgressCard(
     uiState: DashboardUiState,
     onOpenBudget: () -> Unit,
 ) {
-    val animatedProgress by animateFloatAsState(
-        targetValue = uiState.budgetProgress,
-        animationSpec = tween(
-            durationMillis = CHART_ANIMATION_DURATION_MILLIS,
-            easing = FastOutSlowInEasing,
-        ),
-        label = "dashboardBudgetProgress",
-    )
-    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+    FinanceCard(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -650,7 +528,7 @@ private fun BudgetProgressCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text("预算进度", color = glassCardSecondaryText(), style = MaterialTheme.typography.titleMedium)
+                Text("预算", style = MaterialTheme.typography.titleMedium)
                 if (uiState.hasBudget) {
                     TextButton(onClick = onOpenBudget) {
                         Text("管理")
@@ -662,8 +540,9 @@ private fun BudgetProgressCard(
                 }
             }
             if (uiState.hasBudget) {
+                BudgetSummaryMetrics(uiState)
                 LinearProgressIndicator(
-                    progress = { animatedProgress },
+                    progress = { uiState.budgetProgress },
                     modifier = Modifier.fillMaxWidth(),
                     color = if (uiState.isOverBudget) {
                         MaterialTheme.colorScheme.error
@@ -689,9 +568,16 @@ private fun BudgetProgressCard(
                     color = if (uiState.isOverBudget) {
                         MaterialTheme.colorScheme.error
                     } else {
-                        glassCardSecondaryText()
+                        MaterialTheme.colorScheme.onSurfaceVariant
                     },
                     style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            if (uiState.isCurrentMonth && uiState.hasBudget) {
+                Text(
+                    text = uiState.dailyAvailableExplanation,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
                 )
             }
             if (!uiState.hasBudget) {
@@ -716,12 +602,12 @@ private fun SectionTitle(
     ) {
         Text(
             text = title,
-            color = glassCardSecondaryText(),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.titleMedium,
         )
         if (actionLabel != null && onAction != null) {
             TextButton(onClick = onAction) {
-                Text(actionLabel, color = glassCardSecondaryText())
+                Text(actionLabel, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -730,11 +616,11 @@ private fun SectionTitle(
 @Composable
 private fun TopCategoriesCard(categories: List<DashboardCategoryUiState>) {
     if (categories.isEmpty()) {
-        OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+        FinanceCard(modifier = Modifier.fillMaxWidth()) {
             Text(
                 text = "本月还没有支出，开始记账后会显示消费最多的分类。",
                 modifier = Modifier.padding(20.dp),
-                color = glassCardSecondaryText(),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         return
@@ -750,14 +636,13 @@ private fun TopCategoriesCard(categories: List<DashboardCategoryUiState>) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    GlassIconCircle(
-                        tint = MaterialTheme.colorScheme.secondary,
+                    CategoryBadge(
                         size = 40.dp,
                     ) {
                         Icon(
                             imageVector = categoryIcon(category.categoryIconKey),
                             contentDescription = null,
-                            tint = glassCardSecondaryText(),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     Column(
@@ -768,50 +653,19 @@ private fun TopCategoriesCard(categories: List<DashboardCategoryUiState>) {
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
-                            Text(category.categoryName, color = glassCardSecondaryText(), style = MaterialTheme.typography.bodyLarge)
-                            Text(category.amountText, color = glassCardSecondaryText(), style = MaterialTheme.typography.bodyMedium)
+                            Text(category.categoryName, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
+                            Text(category.amountText, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
                         }
-                        val animatedProgress by animateFloatAsState(
-                            targetValue = category.progress,
-                            animationSpec = tween(
-                                durationMillis = CHART_ANIMATION_DURATION_MILLIS,
-                                easing = FastOutSlowInEasing,
-                            ),
-                            label = "categoryProgress",
-                        )
                         LinearProgressIndicator(
-                            progress = { animatedProgress },
+                            progress = { category.progress },
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
                     Text(
                         text = category.shareText,
-                        color = glassCardSecondaryText(),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.labelMedium,
                     )
-                }
-            }
-    }
-}
-
-@Composable
-private fun RecentTransactionsCard(transactions: List<DashboardTransactionUiState>) {
-    if (transactions.isEmpty()) {
-        OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-            Text(
-                text = "暂无最近流水。点击“记一笔”后，新记录会出现在这里。",
-                modifier = Modifier.padding(20.dp),
-                color = glassCardSecondaryText(),
-            )
-        }
-        return
-    }
-
-    Column(modifier = Modifier.fillMaxWidth()) {
-            transactions.forEachIndexed { index, transaction ->
-                RecentTransactionRow(transaction)
-                if (index != transactions.lastIndex) {
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                 }
             }
     }
@@ -822,14 +676,13 @@ private fun RecentTransactionRow(transaction: DashboardTransactionUiState) {
     ListItem(
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         leadingContent = {
-            GlassIconCircle(
-                tint = MaterialTheme.colorScheme.secondary,
+            CategoryBadge(
                 size = 40.dp,
             ) {
                 Icon(
                     imageVector = categoryIcon(transaction.categoryIconKey),
                     contentDescription = null,
-                    tint = glassCardSecondaryText(),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         },
@@ -854,7 +707,7 @@ private fun RecentTransactionRow(transaction: DashboardTransactionUiState) {
                 )
                 Text(
                     text = transaction.typeLabel,
-                    color = glassCardSecondaryText(),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelSmall,
                 )
             }
@@ -865,6 +718,3 @@ private fun RecentTransactionRow(transaction: DashboardTransactionUiState) {
 /** 当前展示月份的口语称谓：本月用“本月”，回看历史月用具体的“N月”短格式。 */
 private fun monthReferenceLabel(uiState: DashboardUiState): String =
     if (uiState.isCurrentMonth) "本月" else uiState.monthLabel.substringAfter('年', uiState.monthLabel)
-
-private const val AMOUNT_CROSSFADE_DURATION_MILLIS = 180
-private const val CHART_ANIMATION_DURATION_MILLIS = 220

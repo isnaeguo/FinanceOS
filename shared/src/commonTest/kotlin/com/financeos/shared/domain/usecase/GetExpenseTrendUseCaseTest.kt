@@ -83,6 +83,34 @@ class GetExpenseTrendUseCaseTest {
     }
 
     @Test
+    fun unsortedDisjointBucketsKeepCallerOrderAndIgnoreGapAndDeletedRows() {
+        val first = period("first", "01", "02")
+        val last = period("last", "03", "04")
+        val transactions = listOf(
+            transaction("last", 300L, TransactionType.EXPENSE, "2026-08-03T00:00:00Z"),
+            transaction("gap", 600L, TransactionType.EXPENSE, "2026-08-02T00:00:00Z"),
+            transaction("deleted", 700L, TransactionType.EXPENSE, "2026-08-01T12:00:00Z").copy(deletedAt = 1),
+            transaction("first", 200L, TransactionType.INCOME, "2026-08-01T00:00:00Z"),
+            transaction("after", 800L, TransactionType.EXPENSE, "2026-08-04T00:00:00Z"),
+        )
+        val useCase = GetExpenseTrendUseCase(FakeTransactionRepository(emptyList()))
+        assertEquals(
+            listOf(ExpenseTrendPoint("last", 300L), ExpenseTrendPoint("first", -200L)),
+            useCase.calculate(listOf(last, first), transactions),
+        )
+        assertEquals(
+            listOf(ExpenseTrendPoint("overlap", 700L), ExpenseTrendPoint("last", 300L)),
+            useCase.calculate(listOf(period("overlap", "01", "04"), last), transactions),
+        )
+    }
+
+    private fun period(key: String, start: String, end: String) = ExpenseTrendPeriod(
+        key,
+        Instant.parse("2026-08-${start}T00:00:00Z"),
+        Instant.parse("2026-08-${end}T00:00:00Z"),
+    )
+
+    @Test
     fun rejectsTrendMoneyOverflow() = runTest {
         val repository = FakeTransactionRepository(
             listOf(

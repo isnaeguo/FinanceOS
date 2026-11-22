@@ -1,19 +1,22 @@
 import SwiftUI
 
-struct TransactionRow: View {
+struct TransactionRow: View, Equatable {
     let transaction: Transaction
     let category: Category?
     var showsTime: Bool = true
 
     var body: some View {
-        HStack(spacing: 12) {
-            CategoryIconView(category: category, size: 34)
+        let note = transaction.note?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let categoryName = category?.name ?? "未知分类"
+        let subtitle = secondaryTitle(includeCategory: !note.isEmpty, categoryName: categoryName)
+        HStack(spacing: 10) {
+            CategoryIconView(category: category, size: 28)
             VStack(alignment: .leading, spacing: 2) {
-                Text(primaryTitle)
+                Text(note.isEmpty ? categoryName : note)
                     .font(.callout.weight(.medium))
                     .lineLimit(1)
-                if !secondaryTitle.isEmpty {
-                    Text(secondaryTitle)
+                if !subtitle.isEmpty {
+                    Text(subtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -27,17 +30,9 @@ struct TransactionRow: View {
         .padding(.vertical, 2)
     }
 
-    private var primaryTitle: String {
-        let note = transaction.note?.trimmingCharacters(in: .whitespaces)
-        if let note, !note.isEmpty { return note }
-        return category?.name ?? "未知分类"
-    }
-
-    private var secondaryTitle: String {
+    private func secondaryTitle(includeCategory: Bool, categoryName: String) -> String {
         var parts: [String] = []
-        if let note = transaction.note?.trimmingCharacters(in: .whitespaces), !note.isEmpty {
-            parts.append(category?.name ?? "未知分类")
-        }
+        if includeCategory { parts.append(categoryName) }
         if showsTime {
             parts.append(FinanceFormat.timeLabel(transaction.dateTime))
         }
@@ -56,13 +51,13 @@ struct TransactionRow: View {
 }
 
 /// 流水页的账户筛选。
-enum AccountFilter: Hashable {
+enum AccountFilter: Hashable, Sendable {
     case all
     case specific(String)
 }
 
 /// 流水组内排序方式：默认按时间倒序，也可按金额升/降序。
-enum AmountSort: String, CaseIterable, Hashable {
+enum AmountSort: String, CaseIterable, Hashable, Sendable {
     /// 按时间倒序（默认）。
     case timeDesc
     /// 金额从大到小，同额按时间倒序。
@@ -101,15 +96,29 @@ struct TransactionsView: View {
     @State private var amountSort: AmountSort = .timeDesc
     @State private var pendingDelete: Transaction?
     @State private var editingTransaction: Transaction?
+    @State private var presentation: TransactionListPresentation?
 
     var body: some View {
+        let query = TransactionListQuery(
+            month: selectedMonth,
+            text: searchText.trimmingCharacters(in: .whitespacesAndNewlines),
+            type: typeFilter, category: categoryFilter, account: accountFilter, sort: amountSort,
+            revision: store.ledgerRevision
+        )
         VStack(spacing: 0) {
-            list
-                .padding(20)
+            if let presentation, presentation.query.month == query.month {
+                list(presentation)
+                Divider()
+                footer(presentation, filtersActive: query.hasFilters)
+            } else {
+                FinanceLoading(label: "正在读取流水")
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
-        .background(AuroraBackground())
+        .task(id: query) { await prepare(query) }
         .navigationTitle("流水")
-        .searchable(text: $searchText, placement: .toolbar, prompt: "搜索备注关键词")
+        .searchable(text: $searchText, placement: .toolbar, prompt: "搜索备注、分类或账户")
         .toolbar { toolbarContent }
         .confirmationDialog(
             "删除这笔流水？",
@@ -133,60 +142,26 @@ struct TransactionsView: View {
 
     // MARK: - 列表
 
-    private var list: some View {
-        let groups = groupedDays
-        let summary = filteredSummary
-        return List {
-            let sortingByAmount = amountSort != .timeDesc
-            let monthAmountItems = sortingByAmount ? filtered.sorted(by: amountSortComparator) : []
-            let isEmpty = sortingByAmount ? monthAmountItems.isEmpty : groupedDays.isEmpty
-            if isEmpty {
+    private func list(_ presentation: TransactionListPresentation) -> some View {
+        List {
+            if presentation.count == 0 {
                 EmptyStateView(
                     symbol: "tray",
-                    title: filtersActive ? "没有符合条件的流水" : "本月还没有流水",
-                    message: filtersActive ? "试试清除筛选条件" : "点击右上角“记一笔”添加收入或支出"
+                    title: presentation.query.hasFilters ? "没有符合条件的流水" : "本月还没有流水",
+                    message: presentation.query.hasFilters ? "试试清除筛选条件" : "点击右上角“记一笔”添加收入或支出"
                 )
                 .listRowSeparator(.hidden)
-            } else if sortingByAmount {
-                // 金额排序：忽略天限制，整月按金额排列
-                ForEach(monthAmountItems) { transaction in
-                    TransactionRow(
-                        transaction: transaction,
-                        category: store.category(id: transaction.categoryId)
-                    )
-                    .contentShape(Rectangle())
-                    .onTapGesture(count: 2) {
-                        editingTransaction = transaction
-                    }
-                    .contextMenu {
-                        Button("编辑") { editingTransaction = transaction }
-                        Divider()
-                        Button("删除", role: .destructive) { pendingDelete = transaction }
-                    }
-                }
+            } else if presentation.query.sort != .timeDesc {
+                ForEach(presentation.rows) { row($0) }
             } else {
-                ForEach(groupedDays, id: \.day) { group in
+                ForEach(presentation.days) { day in
                     Section {
-                        ForEach(group.items) { transaction in
-                            TransactionRow(
-                                transaction: transaction,
-                                category: store.category(id: transaction.categoryId)
-                            )
-                            .contentShape(Rectangle())
-                            .onTapGesture(count: 2) {
-                                editingTransaction = transaction
-                            }
-                            .contextMenu {
-                                Button("编辑") { editingTransaction = transaction }
-                                Divider()
-                                Button("删除", role: .destructive) { pendingDelete = transaction }
-                            }
-                        }
+                        ForEach(day.rows) { row($0) }
                     } header: {
                         HStack {
-                            Text(FinanceFormat.dayLabel(group.day))
+                            Text(FinanceFormat.dayLabel(day.date, calendar: store.calendar))
                             Spacer()
-                            Text(dayNetLabel(group))
+                            Text(day.totals.net >= 0 ? "+\(formatMoney(day.totals.net))" : formatMoney(day.totals.net))
                                 .font(.caption.monospacedDigit())
                                 .foregroundStyle(.secondary)
                         }
@@ -195,35 +170,40 @@ struct TransactionsView: View {
             }
         }
         .listStyle(.inset)
-        .scrollContentBackground(.hidden)
-        .glassEffect(.regular, in: .rect(cornerRadius: 22))
-        .safeAreaInset(edge: .bottom) {
-            HStack(spacing: 14) {
-                Label("\(filtered.count) 笔", systemImage: "number")
-                Divider().frame(height: 12)
-                Text("收入 \(formatMoney(summary.income))")
-                    .foregroundStyle(.mint)
-                Text("支出 \(formatMoney(summary.expense))")
-                    .foregroundStyle(.primary.opacity(0.85))
-                Spacer()
-                if filtersActive {
-                    Button("清除筛选") {
-                        searchText = ""
-                        typeFilter = nil
-                        categoryFilter = nil
-                        accountFilter = .all
-                    }
-                    .buttonStyle(.glass)
-                    .controlSize(.small)
-                }
+    }
+
+    private func row(_ transaction: Transaction) -> some View {
+        TransactionRow(transaction: transaction, category: store.category(id: transaction.categoryId))
+            .equatable()
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2) { editingTransaction = transaction }
+            .contextMenu {
+                Button("编辑") { editingTransaction = transaction }
+                Divider()
+                Button("删除", role: .destructive) { pendingDelete = transaction }
             }
-            .font(.caption)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 10)
-            .glassEffect(.regular, in: .capsule)
-            .padding(.bottom, 12)
-            .frame(maxWidth: .infinity, alignment: .center)
+    }
+
+    private func footer(_ presentation: TransactionListPresentation, filtersActive: Bool) -> some View {
+        HStack(spacing: 14) {
+            Text("\(presentation.count) 笔").foregroundStyle(.secondary)
+            Text("收入 \(formatMoney(presentation.totals.income))")
+            Text("支出 \(formatMoney(presentation.totals.expense))")
+            Spacer(minLength: 8)
+            if filtersActive {
+                Button("清除筛选") {
+                    searchText = ""
+                    typeFilter = nil
+                    categoryFilter = nil
+                    accountFilter = .all
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.accentColor)
+            }
         }
+        .font(.caption.monospacedDigit())
+        .padding(.horizontal, 22)
+        .padding(.vertical, 10)
     }
 
     // MARK: - 工具栏
@@ -248,17 +228,14 @@ struct TransactionsView: View {
             }
         }
         ToolbarItemGroup {
-            if !filtered.isEmpty {
-                sortMenu
-            }
+            sortMenu
             filterMenu
-            Spacer()
             Button {
                 router.isAddSheetPresented = true
             } label: {
                 Label("记一笔", systemImage: "plus")
             }
-            .buttonStyle(.glassProminent)
+            .buttonStyle(.borderedProminent)
             .keyboardShortcut("n", modifiers: .command)
         }
     }
@@ -301,90 +278,127 @@ struct TransactionsView: View {
                 categoryFilter = nil
                 accountFilter = .all
             }
-            .disabled(!filtersActive)
+            .disabled(!hasFilters)
         } label: {
-            Label("筛选", systemImage: filtersActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+            Label("筛选", systemImage: hasFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
         }
     }
 
-    // MARK: - 数据
-
-    private struct DayGroup {
-        let day: Date
-        let items: [Transaction]
+    private var hasFilters: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            typeFilter != nil || categoryFilter != nil || accountFilter != .all
     }
 
-    private var filtersActive: Bool {
-        !searchText.isEmpty || typeFilter != nil || categoryFilter != nil || accountFilter != .all
-    }
-
-    private var filtered: [Transaction] {
-        let period = selectedMonth.period()
-        return store.monthlyTransactions(in: period).filter { transaction in
-            if let typeFilter, transaction.type != typeFilter { return false }
-            if let categoryFilter, transaction.categoryId != categoryFilter { return false }
-            switch accountFilter {
-            case .all: break
-            case .specific(let account) where transaction.accountId != account: return false
-            case .specific: break
-            }
-            if !searchText.isEmpty {
-                let note = transaction.note?.localizedCaseInsensitiveContains(searchText) ?? false
-                let category = store.category(id: transaction.categoryId)?.name.localizedCaseInsensitiveContains(searchText) ?? false
-                if !note && !category { return false }
-            }
-            return true
+    private func prepare(_ query: TransactionListQuery) async {
+        if !query.text.isEmpty, presentation?.query.text != query.text {
+            do { try await Task.sleep(for: .milliseconds(120)) }
+            catch { return }
+        }
+        guard !Task.isCancelled else { return }
+        let calendar = store.calendar
+        let slice = store.transactionSlice(in: query.month.period(calendar: calendar))
+        let categories = query.text.isEmpty ? [:] : store.categoryLookup
+        let worker = Task.detached(priority: .userInitiated) {
+            TransactionListPresentation.make(query: query, rows: slice, categories: categories, calendar: calendar)
+        }
+        await withTaskCancellationHandler {
+            if let result = await worker.value, !Task.isCancelled { presentation = result }
+        } onCancel: {
+            worker.cancel()
         }
     }
+}
 
-    private var groupedDays: [DayGroup] {
-        let calendar = Calendar.current
-        var buckets: [Date: [Transaction]] = [:]
-        for transaction in filtered {
-            let day = calendar.startOfDay(for: transaction.dateTime)
-            buckets[day, default: []].append(transaction)
+struct TransactionListQuery: Equatable, Sendable {
+    let month: BudgetMonth
+    let text: String
+    let type: TransactionType?
+    let category: String?
+    let account: AccountFilter
+    let sort: AmountSort
+    let revision: UInt64
+
+    var hasFilters: Bool { !text.isEmpty || type != nil || category != nil || account != .all }
+
+    func matches(_ row: Transaction, categories: [String: Category]) -> Bool {
+        guard !row.isDeleted, type == nil || row.type == type, category == nil || row.categoryId == category else {
+            return false
         }
-        return buckets
-            .map { DayGroup(day: $0.key, items: $0.value.sorted(by: amountSortComparator)) }
-            .sorted { $0.day > $1.day }
+        if case .specific(let id) = account, row.accountId != id { return false }
+        return text.isEmpty || row.note?.localizedCaseInsensitiveContains(text) == true ||
+            row.accountId?.localizedCaseInsensitiveContains(text) == true ||
+            categories[row.categoryId]?.name.localizedCaseInsensitiveContains(text) == true
     }
+}
 
-    /// 组内排序：默认按时间倒序；按金额时先比较金额，金额相等再按时间倒序。
-    private func amountSortComparator(_ lhs: Transaction, _ rhs: Transaction) -> Bool {
-        switch amountSort {
-        case .timeDesc:
-            return lhs.dateTime > rhs.dateTime
-        case .amountDesc:
-            if lhs.amount != rhs.amount { return lhs.amount > rhs.amount }
-            return lhs.dateTime > rhs.dateTime
-        case .amountAsc:
-            if lhs.amount != rhs.amount { return lhs.amount < rhs.amount }
-            return lhs.dateTime > rhs.dateTime
-        }
-    }
+struct TransactionListPresentation: Sendable {
+    struct Totals: Sendable {
+        private(set) var income: Int64 = 0
+        private(set) var expense: Int64 = 0
+        var net: Int64 { income - expense }
 
-    private var filteredSummary: (income: Int64, expense: Int64) {
-        var income: Int64 = 0
-        var expense: Int64 = 0
-        for transaction in filtered {
-            switch transaction.type {
-            case .income: income += transaction.amount
-            case .expense: expense += transaction.amount
+        mutating func add(_ row: Transaction) {
+            switch row.type {
+            case .income: income = Self.saturatingAdd(income, row.amount)
+            case .expense: expense = Self.saturatingAdd(expense, row.amount)
             }
         }
-        return (income, expense)
+
+        private static func saturatingAdd(_ current: Int64, _ amount: Int64) -> Int64 {
+            let (sum, overflow) = current.addingReportingOverflow(amount)
+            return overflow ? .max : sum
+        }
     }
 
-    private func dayNetLabel(_ group: DayGroup) -> String {
-        var income: Int64 = 0
-        var expense: Int64 = 0
-        for transaction in group.items {
-            switch transaction.type {
-            case .income: income += transaction.amount
-            case .expense: expense += transaction.amount
+    struct Day: Identifiable, Sendable {
+        let date: Date
+        var rows: [Transaction] = []
+        var totals = Totals()
+        var id: Date { date }
+    }
+
+    let query: TransactionListQuery
+    let count: Int
+    let totals: Totals
+    let days: [Day]
+    let rows: [Transaction]
+
+    static func make(
+        query: TransactionListQuery,
+        rows: ArraySlice<Transaction>,
+        categories: [String: Category],
+        calendar: Calendar
+    ) -> TransactionListPresentation? {
+        var totals = Totals()
+        var count = 0
+        var days: [Day] = []
+        var flatRows: [Transaction] = []
+        for (offset, row) in rows.enumerated() {
+            if offset.isMultiple(of: 256), Task.isCancelled { return nil }
+            guard query.matches(row, categories: categories) else { continue }
+            count += 1
+            totals.add(row)
+            if query.sort == .timeDesc {
+                if days.last.map({ row.dateTime < $0.date }) ?? true {
+                    days.append(Day(date: calendar.startOfDay(for: row.dateTime)))
+                }
+                let index = days.count - 1
+                days[index].rows.append(row)
+                days[index].totals.add(row)
+            } else {
+                flatRows.append(row)
             }
         }
-        let net = income - expense
-        return net >= 0 ? "+\(formatMoney(net))" : "-\(formatMoney(-net))"
+        if query.sort != .timeDesc {
+            flatRows.sort {
+                if $0.amount != $1.amount {
+                    return query.sort == .amountDesc ? $0.amount > $1.amount : $0.amount < $1.amount
+                }
+                return $0.dateTime != $1.dateTime ? $0.dateTime > $1.dateTime : $0.id < $1.id
+            }
+        }
+        return Task.isCancelled ? nil : TransactionListPresentation(
+            query: query, count: count, totals: totals, days: days, rows: flatRows
+        )
     }
 }

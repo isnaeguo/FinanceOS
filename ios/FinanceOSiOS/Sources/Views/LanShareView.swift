@@ -251,7 +251,7 @@ private func fosDecryptEnvelope(code: String, envelope: Data, saltHex: String) t
     guard let saltData = fosData(hex: saltHex) else { throw LanError("响应缺少有效 X-FOS-Salt") }
     let key = try LanSyncCrypto.shared.deriveKey(code: code, salt: fosKotlinBytes(saltData))
     let plaintext = try LanSyncCrypto.shared.decrypt(key: key, envelope: fosKotlinBytes(envelope), aad: fosAad())
-    let payload = LanSyncPayload.companion.decode(bytes: plaintext)
+    let payload = try LanSyncPayload.companion.decode(bytes: plaintext)
     return FosPlainPayload(ts: payload.ts, deviceId: payload.deviceId, kind: payload.kind, body: payload.body)
 }
 

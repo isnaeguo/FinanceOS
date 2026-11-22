@@ -20,7 +20,7 @@ object FinanceOsMigrations {
             )
             connection.execSQL("ALTER TABLE transactions ADD COLUMN deleted_at INTEGER")
             connection.execSQL(
-                "UPDATE transactions SET updated_at = date_time_epoch_millis",
+                "UPDATE transactions SET updated_at = MAX(0, date_time_epoch_millis)",
             )
             connection.execSQL(
                 "ALTER TABLE categories ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0",

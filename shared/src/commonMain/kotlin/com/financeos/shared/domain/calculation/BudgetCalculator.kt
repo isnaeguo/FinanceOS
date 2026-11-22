@@ -26,7 +26,7 @@ object BudgetCalculator {
         budget: Budget?,
         amountUsed: Long,
     ): BudgetUsage {
-        if (budget == null) {
+        if (budget == null || budget.deletedAt != null) {
             // 没有预算就不存在可比较的额度，因此不虚构剩余金额、比例或超支状态。
             return BudgetUsage(
                 amountLimit = null,
@@ -45,10 +45,16 @@ object BudgetCalculator {
             amountUsed.toDouble() / budget.amountLimit.toDouble()
         }
 
+        // 收入抵扣支出后，预算剩余额度可能超过 Long 可表示的最大金额。
+        val remaining = if (amountUsed < 0 && budget.amountLimit > Long.MAX_VALUE + amountUsed) {
+            Long.MAX_VALUE
+        } else {
+            budget.amountLimit - amountUsed
+        }
         return BudgetUsage(
             amountLimit = budget.amountLimit,
             amountUsed = amountUsed,
-            amountRemaining = budget.amountLimit - amountUsed,
+            amountRemaining = remaining,
             usageRatio = usageRatio,
             isOverBudget = amountUsed > budget.amountLimit,
             hasBudget = true,

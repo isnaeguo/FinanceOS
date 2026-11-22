@@ -7,21 +7,28 @@ import com.financeos.shared.data.local.repository.LocalFinanceDataRepository
 import com.financeos.shared.data.local.repository.LocalTransactionRepository
 import com.financeos.shared.domain.model.Budget
 import com.financeos.shared.domain.model.BudgetMonth
+import com.financeos.shared.domain.model.CategoryType
 import com.financeos.shared.domain.model.DefaultCategories
 import com.financeos.shared.domain.model.FinanceDataSnapshot
+import com.financeos.shared.domain.model.MonthPeriod
 import com.financeos.shared.domain.model.Transaction
 import com.financeos.shared.domain.model.TransactionType
 import com.financeos.shared.domain.time.EpochClock
 import com.financeos.shared.domain.usecase.AddTransactionCommand
 import com.financeos.shared.domain.usecase.AddTransactionUseCase
+import com.financeos.shared.domain.usecase.ExpenseTrendPeriod
+import com.financeos.shared.domain.usecase.ExpenseTrendPoint
+import com.financeos.shared.domain.usecase.GetExpenseTrendUseCase
 import java.nio.file.Files
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -47,7 +54,7 @@ class LocalRepositoryTest {
             amountLimit = 300_000L,
             updatedAt = FIXED_NOW_MILLIS,
         )
-        val updatedBudget = originalBudget.copy(amountLimit = 350_000L)
+        val updatedBudget = originalBudget.copy(amountLimit = 350_000L, updatedAt = FIXED_NOW_MILLIS + 1)
         val categoryBudget = Budget(
             id = "budget-food-2026-08",
             month = BudgetMonth(2026, 8),
@@ -218,7 +225,7 @@ class LocalRepositoryTest {
                 amountLimit = 100_000L,
                 updatedAt = FIXED_NOW_MILLIS,
             )
-            val updated = original.copy(amountLimit = 120_000L)
+            val updated = original.copy(amountLimit = 120_000L, updatedAt = FIXED_NOW_MILLIS + 1)
             val emissions = mutableListOf<List<Budget>>()
             val emissionSignal = Channel<Unit>(capacity = Channel.UNLIMITED)
             val observationJob = launch(start = CoroutineStart.UNDISPATCHED) {
@@ -305,11 +312,206 @@ class LocalRepositoryTest {
                 categories = DefaultCategories.all,
                 budgets = emptyList(),
             )
-            kotlin.test.assertFailsWith<IllegalArgumentException> {
+            assertFailsWith<IllegalArgumentException> {
                 dataRepository.replaceAll(invalidSnapshot)
             }
 
             assertEquals(existing, transactionRepository.get(existing.id))
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun repeatedStatementImportKeepsEditsAndDeletedIds() = runTest {
+        val database = openMemoryDatabase()
+        try {
+            val data = LocalFinanceDataRepository(database)
+            val ledger = LocalTransactionRepository(database.transactionDao(), fixedClock)
+            val time = Instant.parse("2026-08-10T08:30:00Z")
+            val edited = expense("bank-edited", dateTime = time)
+            val deleted = expense("bank-deleted", dateTime = time)
+            val input = listOf(edited, deleted, edited)
+            assertEquals(2, data.importTransactions(input).transactionCount)
+            ledger.add(edited.copy(note = "人工修改"))
+            assertTrue(ledger.delete(deleted.id))
+
+            val newerFile = input.map { it.copy(updatedAt = FIXED_NOW_MILLIS + 100) }
+            assertEquals(0, data.importTransactions(newerFile).transactionCount)
+            assertEquals("人工修改", ledger.get(edited.id)?.note)
+            assertNull(ledger.get(deleted.id))
+            assertEquals(2, data.snapshot().transactions.size)
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun editChecksRevisionAndCategoryInSameWrite() = runTest {
+        val database = openMemoryDatabase()
+        try {
+            val ledger = LocalTransactionRepository(database.transactionDao(), fixedClock)
+            val baseline = expense("editable", dateTime = Instant.parse("2026-08-10T08:30:00Z"))
+            ledger.add(baseline)
+            assertFalse(ledger.updateCategory(baseline, "system-income"))
+            assertTrue(ledger.updateCategory(baseline, "system-transport"))
+            assertFalse(ledger.update(baseline, baseline.copy(note = "已过期的编辑")))
+            val current = checkNotNull(ledger.get(baseline.id))
+            assertEquals("system-transport", current.categoryId)
+            assertEquals(FIXED_NOW_MILLIS + 1, current.updatedAt)
+            assertTrue(ledger.update(current, current.copy(amount = 5_000L, note = "车票")))
+            assertEquals("车票", ledger.get(baseline.id)?.note)
+            assertTrue(ledger.delete(baseline.id))
+            assertFalse(ledger.updateCategory(current, "system-food"))
+            val tombstone = LocalFinanceDataRepository(database).snapshot().transactions.single()
+            assertEquals(FIXED_NOW_MILLIS + 3, tombstone.updatedAt)
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun creatingCategoryAssignsOnlyTheUnchangedRowAndKeepsExistingCategories() = runTest {
+        val database = openMemoryDatabase()
+        try {
+            val ledger = LocalTransactionRepository(database.transactionDao(), fixedClock)
+            val categories = LocalCategoryRepository(database.categoryDao())
+            val date = Instant.parse("2026-08-10T08:30:00Z")
+            val original = expense("original", dateTime = date)
+            val other = expense("other", dateTime = date).copy(
+                type = TransactionType.INCOME, categoryId = "system-income",
+            )
+            val createdId = "user-9d052e00-e71a-4434-aa79-3aaf25ab22db"
+            val otherId = "user-fc485a64-e99a-4e30-9102-bd55760aba5b"
+            ledger.add(original)
+            ledger.add(other)
+            ledger.add(original.copy(note = "changed during review"))
+
+            assertFalse(ledger.updateCategoryWithNewCategory(original, createdId, "Commute"))
+            assertNull(categories.get(createdId))
+            val latest = checkNotNull(ledger.get(original.id))
+            assertFailsWith<IllegalArgumentException> {
+                ledger.updateCategoryWithNewCategory(latest, createdId, " ")
+            }
+            assertFailsWith<IllegalArgumentException> {
+                ledger.updateCategoryWithNewCategory(latest, createdId, "a".repeat(41))
+            }
+            assertTrue(ledger.updateCategoryWithNewCategory(latest, createdId, "  Commute  "))
+            val assigned = checkNotNull(ledger.get(original.id))
+            assertEquals(latest.copy(categoryId = createdId, updatedAt = latest.updatedAt + 1), assigned)
+            val category = checkNotNull(categories.get(createdId))
+            assertEquals("Commute", category.name)
+            assertEquals(CategoryType.EXPENSE, category.type)
+            assertEquals("other", category.iconKey)
+            assertFalse(category.isSystem)
+
+            val duplicate = assertFailsWith<IllegalArgumentException> {
+                ledger.updateCategoryWithNewCategory(other, otherId, "commute")
+            }
+            assertTrue(duplicate.message.orEmpty().contains("同名"))
+            assertFailsWith<IllegalArgumentException> {
+                ledger.updateCategoryWithNewCategory(other, createdId, "Program income")
+            }
+            assertEquals(category, categories.get(createdId))
+            assertNull(categories.get(otherId))
+            assertEquals(other, ledger.get(other.id))
+            assertTrue(ledger.updateCategoryWithNewCategory(other, otherId, "Program income"))
+            assertEquals(CategoryType.INCOME, categories.get(otherId)?.type)
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun subMillisecondBoundsAreComparedAgainstStoredMillis() = runTest {
+        val database = openMemoryDatabase()
+        try {
+            val ledger = LocalTransactionRepository(database.transactionDao(), fixedClock)
+            val start = Instant.parse("2026-08-10T08:30:00Z")
+            val next = Instant.parse("2026-08-10T08:30:00.001Z")
+            ledger.add(expense("on-boundary", dateTime = start))
+            ledger.add(expense("next", dateTime = next))
+            val between = Instant.parse("2026-08-10T08:30:00.0005Z")
+            assertEquals(listOf("on-boundary"), ledger.getByPeriod(start, between).map { it.id })
+            assertEquals(emptyList(), ledger.getByPeriod(between, next))
+            val period = ExpenseTrendPeriod("sub-millisecond", start, between)
+            val trend = GetExpenseTrendUseCase(ledger)
+            val expected = listOf(ExpenseTrendPoint(period.key, 1_299L))
+            assertEquals(expected, trend(listOf(period)))
+            assertEquals(listOf(expected), trend.observeGroups(listOf(listOf(period))).first())
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun widgetRemainingIncludesTodayWhileDailyAllocationUsesEarlierExpenses() = runTest {
+        val database = openMemoryDatabase()
+        try {
+            val ledger = LocalTransactionRepository(database.transactionDao(), fixedClock)
+            val data = LocalFinanceDataRepository(database)
+            val month = BudgetMonth(2026, 8)
+            val startOfToday = Instant.parse("2026-08-15T00:00:00Z")
+            val period = MonthPeriod(
+                month = month,
+                startInclusive = Instant.parse("2026-08-01T00:00:00Z"),
+                endExclusive = Instant.parse("2026-09-01T00:00:00Z"),
+            )
+            LocalBudgetRepository(database.budgetDao(), fixedClock)
+                .save(Budget("widget-budget", month, 100_000L))
+            ledger.add(expense("previous-month", 50_000L, Instant.parse("2026-07-31T23:59:59Z")))
+            ledger.add(expense("earlier", 30_000L, Instant.parse("2026-08-14T23:59:59Z")))
+            ledger.add(expense("today", 10_000L, startOfToday))
+            ledger.add(expense("removed", 50_000L, startOfToday))
+            ledger.delete("removed")
+            ledger.add(expense("next-month", 50_000L, period.endExclusive))
+            // 小组件展示支出金额。即使收入总额超过 Long 范围也不影响结果。
+            ledger.add(expense("income-1", Long.MAX_VALUE, startOfToday)
+                .copy(type = TransactionType.INCOME, categoryId = "system-income"))
+            ledger.add(expense("income-2", 1L, startOfToday)
+                .copy(type = TransactionType.INCOME, categoryId = "system-income"))
+
+            val overview = data.monthlyBudgetOverview(period, dayOfMonth = 15, startOfToday = startOfToday)
+            assertEquals(40_000L, overview.amountUsed)
+            assertEquals(60_000L, overview.amountRemaining)
+            assertEquals(4_117L, overview.dailyAvailable)
+            assertFalse(overview.isOverBudget)
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun widgetSpendingSaturatesEachTotalIndependentlyAtLongMax() = runTest {
+        val database = openMemoryDatabase()
+        try {
+            val ledger = LocalTransactionRepository(database.transactionDao(), fixedClock)
+            val data = LocalFinanceDataRepository(database)
+            val month = BudgetMonth(2026, 8)
+            val period = MonthPeriod(
+                month,
+                Instant.parse("2026-08-01T00:00:00Z"),
+                Instant.parse("2026-09-01T00:00:00Z"),
+            )
+            val today = Instant.parse("2026-08-15T00:00:00Z")
+            val yesterday = Instant.parse("2026-08-14T23:59:59Z")
+            val limit = 100_000L
+            LocalBudgetRepository(database.budgetDao(), fixedClock).save(Budget("widget-budget", month, limit))
+            ledger.add(expense("previous", 17_000L, yesterday))
+            ledger.add(expense("today", Long.MAX_VALUE - 17_000L, today))
+            val exact = data.monthlyBudgetOverview(period, 15, today)
+            assertEquals(Long.MAX_VALUE, exact.amountUsed)
+            assertEquals(4_882L, exact.dailyAvailable)
+
+            ledger.add(expense("today-overflow", 1L, today))
+            assertEquals(exact, data.monthlyBudgetOverview(period, 15, today))
+
+            ledger.add(expense("yesterday-overflow", Long.MAX_VALUE, yesterday))
+            val overflow = data.monthlyBudgetOverview(period, 15, today)
+            assertEquals(Long.MAX_VALUE, overflow.amountUsed)
+            assertEquals(limit - Long.MAX_VALUE, overflow.amountRemaining)
+            assertEquals(0L, overflow.dailyAvailable)
+            assertTrue(overflow.isOverBudget)
         } finally {
             database.close()
         }

@@ -5,6 +5,7 @@ import com.financeos.shared.domain.model.DefaultCategories
 import com.financeos.shared.domain.model.Transaction
 import com.financeos.shared.domain.model.TransactionType
 import com.financeos.shared.domain.usecase.DailyAvailableBudget
+import com.financeos.shared.domain.usecase.ExpenseTrendPoint
 import com.financeos.shared.domain.usecase.MonthlyBudgetStatus
 import com.financeos.shared.domain.usecase.MonthlySummary
 import java.time.ZoneId
@@ -97,6 +98,18 @@ class DashboardUiStateTest {
         assertEquals(emptyList(), state.topCategories)
         assertEquals(emptyList(), state.recentTransactions)
         assertTrue(state.budgetProgressText.contains("尚未设置"))
+    }
+
+    @Test
+    fun trendPreservesNegativeNetSpendingAndNormalizesWithoutLongOverflow() {
+        val points = listOf(
+            ExpenseTrendPoint("negative", Long.MIN_VALUE),
+            ExpenseTrendPoint("zero", 0L),
+            ExpenseTrendPoint("positive", Long.MAX_VALUE / 2 + 1),
+        ).toDashboardTrend()
+
+        assertEquals(listOf(-1f, 0f, 0.5f), points.map { it.normalizedAmount })
+        assertEquals("-¥92,233,720,368,547,758.08", points.first().amountText)
     }
 
     private fun transaction(id: String, dateTime: String) = Transaction(

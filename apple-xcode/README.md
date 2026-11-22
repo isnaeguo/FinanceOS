@@ -1,26 +1,11 @@
-# FinanceOS（macOS Xcode 工程）— 解决小组件不被系统识别
+# FinanceOS macOS Xcode 工程
 
-之前的“小组件搜不到”是因为手工打包的 appex 不被 WidgetKit 完全接受。
-用本 Xcode 工程构建即可得到系统认可的官方小组件扩展。
+用 Xcode 打开 `FinanceOS.xcodeproj`，选择 FinanceOS scheme 和 My Mac。构建时先由 Widget target 调用 Gradle 生成匹配 Debug 或 Release 的 FinanceOSShared 静态框架，App 与 Widget 都链接该框架。
 
-## 使用
-1. 先彻底卸载旧的 FinanceOS：把 ~/Applications/FinanceOS.app 移到废纸篓，
-   并执行 `pluginkit -r ~/Applications/FinanceOS.app/Contents/PlugIns/FinanceOSWidgetExtension.appex`（如仍存在）。
-2. 打开本目录 `FinanceOS.xcodeproj`。
-3. 选 Signing Team（App、FinanceOSWidget、FinanceOSCore 三个 target 同一 Team）。
-4. 为 **FinanceOS** 与 **FinanceOSWidget** 两个 target 在 Signing & Capabilities 勾选 App Groups：
-   `group.com.financeos.ios`（entitlements 已预置）。
-5. Run（Scheme 选 FinanceOS / My Mac）。构建会把 widget 嵌入 App 并由系统注册。
-6. 桌面右键 → 编辑小组件 → 搜索 FinanceOS 添加（小/中/大）。
+## App 与小组件签名
 
-## 如果编译报错
-- “cannot find type X / missing module”：说明某文件缺 `import FinanceOSCore`，
-  在该文件顶部补上即可（Widget 源码目录 Sources 与 MacViews 中个别文件可能需要）。
-- 版本与沙盒：App 与小组件都已启用 App Sandbox + App Groups，数据通过共享容器
-  `group.com.financeos.ios`（Core 的 DefaultStoreLocation 自动优先该容器）。
+1. 为 FinanceOS 和 FinanceOSWidget 选择同一个签名团队。
+2. 检查两端的 App Groups 能力包含 `group.com.financeos.ios`，以访问同一个 Room 数据库。
+3. 构建并运行 App。安装签名构建后，可从 macOS 的「编辑小组件」添加 FinanceOS 本月概览。
 
-## 备注
-- 当前工程未使用 App Sandbox / App Groups：小组件与 App 直接读写同一用户数据文件
-  （~/Library/Application Support/FinanceOS/store.json），本机使用最省事。
-- 若要上架/正式分发并继续支持“已启用 App Groups”的共享，再在 Xcode 里给两个 target
-  勾选 App Groups `group.com.financeos.ios`（需要支持该能力的开发者账号）。
+App 沙盒声明用户选择文件的读写权限及局域网连接和接收权限。命令行脚本可生成本地构建。要分发签名 App 与 Widget，在 Xcode 中完成配套签名或归档。

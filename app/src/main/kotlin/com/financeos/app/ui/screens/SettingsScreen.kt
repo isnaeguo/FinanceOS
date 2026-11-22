@@ -1,5 +1,4 @@
 package com.financeos.app.ui.screens
-import com.financeos.app.ui.components.glassCardSecondaryText
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -26,34 +25,40 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.financeos.app.FinanceEntry
 import com.financeos.app.ui.viewmodel.DataTransferEvent
 import com.financeos.app.ui.viewmodel.DataTransferUiState
 import com.financeos.app.ui.viewmodel.DataTransferViewModel
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import androidx.compose.ui.graphics.Color
-import com.financeos.app.ui.components.GlassCard
+import com.financeos.app.ui.components.FinanceCard
 
 /** 连接系统文件选择器与数据导入导出状态。 */
 @Composable
 internal fun SettingsRoute(
     viewModel: DataTransferViewModel,
     onOpenLanShare: () -> Unit,
+    onOpenAi: () -> Unit,
+    entry: FinanceEntry?,
+    onEntryHandled: (FinanceEntry) -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    var showPasteDialog by remember { mutableStateOf(false) }
     val exportJsonLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument(JSON_MIME_TYPE),
     ) { uri -> uri?.let(viewModel::exportJson) }
@@ -70,6 +75,21 @@ internal fun SettingsRoute(
         ActivityResultContracts.OpenDocument(),
     ) { uri -> uri?.let(viewModel::prepareRestore) }
 
+    LaunchedEffect(entry, uiState.isBusy) {
+        if (uiState.isBusy) return@LaunchedEffect
+        when (entry) {
+            is FinanceEntry.StatementFile -> {
+                viewModel.importData(entry.uri)
+                onEntryHandled(entry)
+            }
+            is FinanceEntry.StatementText -> {
+                viewModel.importPastedStatement(entry.content)
+                onEntryHandled(entry)
+            }
+            else -> Unit
+        }
+    }
+
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             when (event) {
@@ -82,6 +102,8 @@ internal fun SettingsRoute(
         uiState = uiState,
         snackbarHostState = snackbarHostState,
         onOpenLanShare = onOpenLanShare,
+        onOpenAi = onOpenAi,
+        onPaste = { showPasteDialog = true },
         onExportJson = {
             exportJsonLauncher.launch("FinanceOS-data-${fileTimestamp()}.json")
         },
@@ -96,6 +118,37 @@ internal fun SettingsRoute(
         onConfirmRestore = viewModel::confirmRestore,
         onDismissRestore = viewModel::dismissRestore,
     )
+    if (showPasteDialog) {
+        PasteStatementDialog(
+            onDismiss = { showPasteDialog = false },
+            onPreview = {
+                showPasteDialog = false
+                viewModel.importPastedStatement(it)
+            },
+        )
+    }
+    val pending = uiState.pendingImport
+    val columns = uiState.statementColumns
+    if (columns != null) {
+        MapStatementColumnsDialog(
+            columns = columns,
+            issue = uiState.importError ?: pending?.takeIf { it.needsColumnMapping }?.issues?.firstOrNull(),
+            hasPreview = pending?.needsColumnMapping == false,
+            isBusy = uiState.isBusy,
+            onDismiss = viewModel::closeStatementColumns,
+            onPreview = viewModel::applyStatementColumns,
+        )
+    } else if (pending != null) {
+        ImportPreviewDialog(
+            pending = pending,
+            error = uiState.importError,
+            isBusy = uiState.isBusy,
+            onDismiss = viewModel::dismissImport,
+            onMapColumns = viewModel::editStatementColumns,
+            onExchangeRate = viewModel::applyStatementExchangeRate,
+            onConfirm = viewModel::confirmImport,
+        )
+    }
 }
 
 /** 设置与数据可携带页面。 */
@@ -104,6 +157,8 @@ internal fun SettingsScreen(
     uiState: DataTransferUiState,
     snackbarHostState: SnackbarHostState,
     onOpenLanShare: () -> Unit,
+    onOpenAi: () -> Unit,
+    onPaste: () -> Unit,
     onExportJson: () -> Unit,
     onExportCsv: () -> Unit,
     onImport: () -> Unit,
@@ -114,6 +169,26 @@ internal fun SettingsScreen(
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(modifier = Modifier.fillMaxSize()) {
+            item { SettingsSectionTitle("导入数据") }
+            item {
+                SettingsAction(
+                    title = "选择文件导入",
+                    description = "预览 CSV、TSV、XLSX、OFX、QFX、QBO 或 FinanceOS JSON",
+                    icon = Icons.Default.Add,
+                    enabled = !uiState.isBusy,
+                    onClick = onImport,
+                )
+            }
+            item {
+                SettingsAction(
+                    title = "粘贴账单表格",
+                    description = "从表格软件复制含表头的流水，核对后导入",
+                    icon = Icons.Default.Add,
+                    enabled = !uiState.isBusy,
+                    onClick = onPaste,
+                )
+            }
+            item { HorizontalDivider() }
             item { SettingsSectionTitle("导出数据") }
             item {
                 SettingsAction(
@@ -134,14 +209,13 @@ internal fun SettingsScreen(
                 )
             }
             item { HorizontalDivider() }
-            item { SettingsSectionTitle("导入数据") }
             item {
                 SettingsAction(
-                    title = "导入数据（JSON / CSV / XLSX）",
-                    description = "自动识别文件格式；按 ID 合并，不会删除文件中未涉及的本机数据",
-                    icon = Icons.Default.Add,
+                    title = "AI 账单分析",
+                    description = "建议流水分类，分析月度消费和预算",
+                    icon = Icons.Default.Star,
                     enabled = !uiState.isBusy,
-                    onClick = onImport,
+                    onClick = onOpenAi,
                 )
             }
             item { HorizontalDivider() }
@@ -190,7 +264,7 @@ internal fun SettingsScreen(
                         Text(
                             // 版本号取自构建配置，随 versionName 自动更新，避免硬编码过期。
                             text = "版本 ${appVersionName()} · isnaeguo",
-                            color = glassCardSecondaryText(),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     },
                 )
@@ -198,7 +272,7 @@ internal fun SettingsScreen(
         }
 
         if (uiState.isBusy) {
-            GlassCard(
+            FinanceCard(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(16.dp),
@@ -260,10 +334,10 @@ private fun SettingsAction(
             headlineColor = MaterialTheme.colorScheme.onSurface.copy(
                 alpha = if (enabled) 1f else 0.38f,
             ),
-            supportingColor = glassCardSecondaryText().copy(
+            supportingColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(
                 alpha = if (enabled) 1f else 0.38f,
             ),
-            leadingIconColor = glassCardSecondaryText().copy(
+            leadingIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(
                 alpha = if (enabled) 1f else 0.38f,
             ),
         ),
@@ -276,7 +350,7 @@ private fun SettingsSectionTitle(title: String) {
     Text(
         text = title,
         modifier = Modifier.padding(start = 16.dp, top = 20.dp, end = 16.dp, bottom = 8.dp),
-        color = glassCardSecondaryText(),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         style = MaterialTheme.typography.labelLarge,
     )
 }

@@ -21,13 +21,8 @@ class FinanceDataTransferService(
     suspend fun importJson(content: String): FinanceDataImportResult =
         repository.merge(parseJson(content))
 
-    suspend fun importTransactionsCsv(content: String): FinanceDataImportResult = repository.merge(
-        FinanceDataSnapshot(
-            transactions = csvCodec.decode(content),
-            categories = emptyList(),
-            budgets = emptyList(),
-        ),
-    )
+    suspend fun importTransactionsCsv(content: String): FinanceDataImportResult =
+        repository.importTransactions(csvCodec.decode(content))
 
     fun parseJson(content: String): FinanceDataSnapshot = jsonCodec.decode(content)
 

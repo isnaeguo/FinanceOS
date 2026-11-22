@@ -21,7 +21,6 @@ struct LanShareView: View {
             }
             .padding(20)
         }
-        .background(AuroraBackground())
         .navigationTitle("局域网共享")
         .onDisappear { model.onPageDisappear() }
     }
@@ -29,7 +28,7 @@ struct LanShareView: View {
     // MARK: - 接收方（服务端）
 
     private var receiveCard: some View {
-        GlassCard {
+        FinancePanel {
             VStack(alignment: .leading, spacing: 12) {
                 Label("接收对方数据（服务器）", systemImage: "antenna.radiowaves.left.and.right")
                     .font(.headline)
@@ -51,14 +50,14 @@ struct LanShareView: View {
                         } label: {
                             Label("停止接收", systemImage: "stop.fill")
                         }
-                        .buttonStyle(.glass)
+                        .buttonStyle(.bordered)
                     } else {
                         Button {
                             model.startServer(store: store)
                         } label: {
                             Label("开始接收", systemImage: "play.fill")
                         }
-                        .buttonStyle(.glassProminent)
+                        .buttonStyle(.borderedProminent)
                     }
                 }
 
@@ -85,7 +84,7 @@ struct LanShareView: View {
                             } label: {
                                 Label("复制", systemImage: "doc.on.doc")
                             }
-                            .buttonStyle(.glass)
+                            .buttonStyle(.bordered)
                             .controlSize(.small)
                         }
                         Text(model.activePairingCode)
@@ -107,7 +106,7 @@ struct LanShareView: View {
     // MARK: - 发起方（客户端）
 
     private var sendCard: some View {
-        GlassCard {
+        FinancePanel {
             VStack(alignment: .leading, spacing: 12) {
                 Label("向对方推送 / 拉取数据（客户端）", systemImage: "arrow.triangle.2.circlepath")
                     .font(.headline)
@@ -138,14 +137,14 @@ struct LanShareView: View {
                 }
 
                 HStack(spacing: 10) {
-                    GlassActionButton(
+                    FinanceActionButton(
                         title: model.clientBusy ? "正在拉取…" : "拉取对方快照",
                         symbol: "arrow.down.doc.fill",
                         action: { model.pullSnapshot(store: store) }
                     )
                     .disabled(model.clientBusy)
 
-                    GlassActionButton(
+                    FinanceActionButton(
                         title: model.clientBusy ? "正在推送…" : "把我的快照推送给对方",
                         symbol: "arrow.up.doc.fill",
                         action: { model.pushSnapshot(store: store) }
@@ -159,7 +158,7 @@ struct LanShareView: View {
     // MARK: - 状态与日志
 
     private var statusCard: some View {
-        GlassCard {
+        FinancePanel {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Label("状态与日志", systemImage: "terminal.fill")
@@ -167,7 +166,7 @@ struct LanShareView: View {
                     Spacer()
                     if !model.logLines.isEmpty {
                         Button("清空") { model.clearLog() }
-                            .buttonStyle(.glass)
+                            .buttonStyle(.bordered)
                             .controlSize(.small)
                     }
                 }
@@ -256,8 +255,8 @@ final class LanShareViewModel {
         do {
             let server = try LanShareHTTPServer(
                 port: portNumber,
-                exportSnapshot: { [store] in try store.exportJSON() },
-                importSnapshot: { [store] snapshot in store.applyMerge(snapshot) },
+                exportSnapshot: { [store] in try await store.exportCommittedJSON() },
+                importSnapshot: { [store] snapshot in try await store.mergeBackup(snapshot) },
                 logSink: { [weak self] message in self?.appendLog(message) },
                 onTerminated: { [weak self] message in self?.handleServerTerminated(message) }
             )
@@ -329,6 +328,7 @@ final class LanShareViewModel {
         clientBusy = true
         resultMessage = nil
         Task.detached(priority: .userInitiated) { [weak self] in
+            guard let self else { return }
             do {
                 let key = try LanSyncCrypto.shared.deriveKey(code: code, salt: kmpBytes(salt))
                 var request = URLRequest(url: url, timeoutInterval: 10)
@@ -345,16 +345,16 @@ final class LanShareViewModel {
                 let snapshotText = try lanDecryptPayloadBody(from: data, key: key)
                 // 在后台线程解析备份 JSON，避免大数据拖慢主线程。
                 let snapshot = try FinanceDataJsonCodec.decode(snapshotText)
-                let result = await MainActor.run { store.applyMerge(snapshot) }
-                let summary = "拉取成功：新增流水 \(result.transactionCount) 笔、分类 \(result.categoryCount) 个、预算 \(result.budgetCount) 条。"
+                let result = try await store.mergeBackup(snapshot)
+                let summary = "拉取成功。已处理流水 \(result.transactionCount) 笔、分类 \(result.categoryCount) 个、预算 \(result.budgetCount) 条。"
                 await MainActor.run {
-                    self?.setResult(summary, isError: false)
-                    self?.appendLog("已从 \(host) 拉取快照并合并到本机")
-                    self?.clientBusy = false
+                    self.setResult(summary, isError: false)
+                    self.appendLog("已从 \(host) 拉取快照并合并到本机")
+                    self.clientBusy = false
                 }
             } catch {
                 await MainActor.run {
-                    self?.handleClientError(error)
+                    self.handleClientError(error)
                 }
             }
         }
@@ -377,8 +377,9 @@ final class LanShareViewModel {
         clientBusy = true
         resultMessage = nil
         Task.detached(priority: .userInitiated) { [weak self] in
+            guard let self else { return }
             do {
-                let json = try await MainActor.run { try store.exportJSON() }
+                let json = try await store.exportCommittedJSON()
                 let key = try LanSyncCrypto.shared.deriveKey(code: code, salt: kmpBytes(salt))
                 let payload = LanSyncPayload(
                     proto: 2,
@@ -412,13 +413,13 @@ final class LanShareViewModel {
                 let resultText = try lanDecryptPayloadBody(from: data, key: key)
                 let summary = LanShareSupport.importedSummary(from: resultText) ?? "推送成功：对方已接收快照。"
                 await MainActor.run {
-                    self?.setResult(summary, isError: false)
-                    self?.appendLog("已把本机快照推送给 \(host)")
-                    self?.clientBusy = false
+                    self.setResult(summary, isError: false)
+                    self.appendLog("已把本机快照推送给 \(host)")
+                    self.clientBusy = false
                 }
             } catch {
                 await MainActor.run {
-                    self?.handleClientError(error)
+                    self.handleClientError(error)
                 }
             }
         }
@@ -643,14 +644,12 @@ private func hexData(_ text: String) -> Data? {
 
 /// 解密响应信封并取出明文 payload 的 body（snapshot 或 import_result 的 JSON 文本）。
 private func lanDecryptPayloadBody(from envelope: Data, key: KotlinByteArray) throws -> String {
-    let plaintext: Data
     do {
-        plaintext = dataOf(try LanSyncCrypto.shared.decrypt(key: key, envelope: kmpBytes(envelope), aad: kmpBytes(Data("2".utf8))))
+        let plaintext = try LanSyncCrypto.shared.decrypt(key: key, envelope: kmpBytes(envelope), aad: kmpBytes(Data("2".utf8)))
+        return try LanSyncPayload.companion.decode(bytes: plaintext).body
     } catch {
         throw LanShareError("配对码错误或数据已损坏。")
     }
-    let payload = LanSyncPayload.companion.decode(bytes: kmpBytes(plaintext))
-    return payload.body
 }
 
 /// 小对象锁保护（配对码由主线程写入、服务队列读取）。
@@ -681,8 +680,8 @@ private final class ProtectedValue<Value>: @unchecked Sendable {
 /// 基于 Network.framework（NWListener/TCP）的最小明文 HTTP/1.1 服务。
 /// 每个连接只服务一个请求：读完整请求 → 响应 → 关闭。不使用 chunked，响应一律带 Content-Length。
 final class LanShareHTTPServer: @unchecked Sendable {
-    typealias ExportSnapshot = @MainActor () throws -> String
-    typealias ImportSnapshot = @MainActor (FinanceDataSnapshot) throws -> FinanceDataImportResult
+    typealias ExportSnapshot = @MainActor () async throws -> String
+    typealias ImportSnapshot = @MainActor (FinanceDataSnapshot) async throws -> FinanceDataImportResult
     typealias LogSink = @MainActor (String) -> Void
     typealias TerminatedHandler = @MainActor (String) -> Void
 
@@ -994,7 +993,7 @@ final class LanShareHTTPServer: @unchecked Sendable {
 
     /// GET：导出本机快照 → snapshot_response payload → 加密信封。
     private func makeEncryptedGETResponse(key: KotlinByteArray, saltEchoHex: String?) -> LanHTTPResponse {
-        let outcome = Self.hopToMain { try self.exportSnapshot() }
+        let outcome = Self.hopToMain { try await self.exportSnapshot() }
         switch outcome {
         case .success(let json):
             return encryptedPayloadResponse(bodyText: json, kind: lanKindSnapshotResponse, key: key, saltEchoHex: saltEchoHex)
@@ -1015,13 +1014,13 @@ final class LanShareHTTPServer: @unchecked Sendable {
             return LanHTTPResponse.error(400, "请求重复（nonce 已使用）。")
         }
 
-        let plaintext: Data
+        let payload: LanSyncPayload
         do {
-            plaintext = dataOf(try LanSyncCrypto.shared.decrypt(key: key, envelope: kmpBytes(requestBody), aad: kmpBytes(Data("2".utf8))))
+            let plaintext = try LanSyncCrypto.shared.decrypt(key: key, envelope: kmpBytes(requestBody), aad: kmpBytes(Data("2".utf8)))
+            payload = try LanSyncPayload.companion.decode(bytes: plaintext)
         } catch {
             return authFailureResponse()
         }
-        let payload = LanSyncPayload.companion.decode(bytes: kmpBytes(plaintext))
         guard LanSyncPolicy.shared.isTimestampFresh(ts: payload.ts, nowMillis: lanNowMillis()) else {
             return policyResponse(400, LanSyncPolicy.shared.staleTimestampBody())
         }
@@ -1041,7 +1040,7 @@ final class LanShareHTTPServer: @unchecked Sendable {
         } catch {
             return LanHTTPResponse.error(400, Self.friendlyMessage(for: error))
         }
-        let outcome = Self.hopToMain { try self.importSnapshot(snapshot) }
+        let outcome = Self.hopToMain { try await self.importSnapshot(snapshot) }
         switch outcome {
         case .success(let imported):
             resetAuthFailures()
@@ -1122,11 +1121,12 @@ final class LanShareHTTPServer: @unchecked Sendable {
     }
 
     /// 把需要在主线程执行的快照导出 / 导入任务同步拿到结果；本方法运行在网络工作队列。
-    private static func hopToMain<Value>(_ operation: @escaping @MainActor () throws -> Value) -> Result<Value, Error> {
+    private static func hopToMain<Value>(_ operation: @escaping @MainActor () async throws -> Value) -> Result<Value, Error> {
         let box = OperationBox<Value>()
         Task { @MainActor in
-            box.result = Result { try operation() }
-            box.semaphore.signal()
+            defer { box.semaphore.signal() }
+            do { box.result = .success(try await operation()) }
+            catch { box.result = .failure(error) }
         }
         box.semaphore.wait()
         return box.result!

@@ -21,6 +21,7 @@ interface BudgetRepository {
     /** 持续观察指定月份预算，使 Dashboard 能响应预算新增或修改。 */
     fun observeByMonth(month: BudgetMonth): Flow<List<Budget>>
 
-    /** 按预算 ID 保存新预算或更新已有预算。 */
+    /** 按月份与分类范围保存新预算或更新已有预算。 */
+    @Throws(Exception::class)
     suspend fun save(budget: Budget)
 }

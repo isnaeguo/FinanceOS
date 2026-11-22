@@ -37,7 +37,8 @@ internal fun TransactionEntity.toDomain() = Transaction(
     // 从同一 Unix 毫秒值恢复 Instant，保证跨平台时间语义一致。
     dateTime = Instant.fromEpochMilliseconds(dateTimeEpochMillis),
     note = note,
-    updatedAt = updatedAt,
+    // v1 → v2 的旧迁移曾直接用业务时间回填。保留 1970 年前的业务日期并修正其同步版本。
+    updatedAt = updatedAt.coerceAtLeast(0),
     deletedAt = deletedAt,
 )
 

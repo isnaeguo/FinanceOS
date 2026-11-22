@@ -1,8 +1,4 @@
 package com.financeos.app.ui.screens
-import com.financeos.app.ui.components.glassCardSecondaryText
-import com.financeos.app.ui.components.BrandGradientButton
-import androidx.compose.ui.graphics.Color
-import com.financeos.app.ui.components.glassTextFieldColors
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -67,6 +64,7 @@ import java.util.Locale
 internal fun AddTransactionRoute(
     viewModel: AddTransactionViewModel,
     onSaved: () -> Unit,
+    focusAmount: Boolean = true,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -80,12 +78,14 @@ internal fun AddTransactionRoute(
 
     AddTransactionScreen(
         uiState = uiState,
+        focusAmount = focusAmount,
         onAmountChanged = viewModel::onAmountChanged,
         onTypeChanged = viewModel::onTypeChanged,
         onCategorySelected = viewModel::onCategorySelected,
         onDateChanged = viewModel::onDateChanged,
         onTimeChanged = viewModel::onTimeChanged,
         onNoteChanged = viewModel::onNoteChanged,
+        onAccountChanged = viewModel::onAccountChanged,
         onRetryCategories = viewModel::retryCategories,
         onSave = viewModel::save,
     )
@@ -96,12 +96,14 @@ internal fun AddTransactionRoute(
 @Composable
 internal fun AddTransactionScreen(
     uiState: AddTransactionUiState,
+    focusAmount: Boolean,
     onAmountChanged: (String) -> Unit,
     onTypeChanged: (TransactionType) -> Unit,
     onCategorySelected: (String) -> Unit,
     onDateChanged: (LocalDate) -> Unit,
     onTimeChanged: (LocalTime) -> Unit,
     onNoteChanged: (String) -> Unit,
+    onAccountChanged: (String) -> Unit,
     onRetryCategories: () -> Unit,
     onSave: () -> Unit,
 ) {
@@ -112,8 +114,10 @@ internal fun AddTransactionScreen(
     var showTimePicker by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        amountFocusRequester.requestFocus()
-        keyboardController?.show()
+        if (focusAmount) {
+            amountFocusRequester.requestFocus()
+            keyboardController?.show()
+        }
     }
 
     Column(
@@ -136,7 +140,6 @@ internal fun AddTransactionScreen(
                     label = { Text("金额") },
                     placeholder = { Text("0.00") },
                     prefix = { Text("¥") },
-                    colors = glassTextFieldColors(),
                     textStyle = MaterialTheme.typography.headlineMedium,
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                         keyboardType = KeyboardType.Decimal,
@@ -173,7 +176,7 @@ internal fun AddTransactionScreen(
             }
 
             item {
-                Text("分类", color = glassCardSecondaryText(), style = MaterialTheme.typography.titleMedium)
+                Text("分类", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.titleMedium)
             }
             item {
                 when {
@@ -216,7 +219,7 @@ internal fun AddTransactionScreen(
             }
 
             item {
-                Text("日期时间", color = glassCardSecondaryText(), style = MaterialTheme.typography.titleMedium)
+                Text("日期时间", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.titleMedium)
             }
             item {
                 Row(
@@ -246,7 +249,17 @@ internal fun AddTransactionScreen(
                     label = { Text("备注（可选）") },
                     placeholder = { Text("例如：午饭") },
                     maxLines = 3,
-                    colors = glassTextFieldColors(),
+                )
+            }
+
+            item {
+                OutlinedTextField(
+                    value = uiState.account,
+                    onValueChange = onAccountChanged,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("账户（可选）") },
+                    placeholder = { Text("例如：信用卡") },
+                    singleLine = true,
                 )
             }
 
@@ -257,6 +270,9 @@ internal fun AddTransactionScreen(
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodyMedium,
                     )
+                    if (!uiState.isLoaded && !uiState.isLoadingCategories) {
+                        TextButton(onClick = onRetryCategories) { Text("重新加载") }
+                    }
                 }
             }
         }
@@ -267,7 +283,7 @@ internal fun AddTransactionScreen(
                 .navigationBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         ) {
-            BrandGradientButton(
+            Button(
                 onClick = {
                     focusManager.clearFocus()
                     keyboardController?.hide()
@@ -280,10 +296,10 @@ internal fun AddTransactionScreen(
                     CircularProgressIndicator(
                         modifier = Modifier.size(20.dp),
                         strokeWidth = 2.dp,
-                        color = Color.White,
+                        color = LocalContentColor.current,
                     )
                 } else {
-                    Text("保存", color = Color.White)
+                    Text("保存")
                 }
             }
         }

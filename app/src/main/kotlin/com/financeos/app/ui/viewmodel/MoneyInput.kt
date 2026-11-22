@@ -1,6 +1,6 @@
 package com.financeos.app.ui.viewmodel
 
-private const val MAX_MAJOR_DIGITS = 9
+private const val MAX_MAJOR_DIGITS = 17
 private val amountInputPattern = Regex("^(?:\\d{0,$MAX_MAJOR_DIGITS})(?:\\.\\d{0,2})?$")
 
 /**
@@ -20,15 +20,12 @@ internal fun parseAmountInMinorUnits(
     input: String,
     allowZero: Boolean = false,
 ): Long? {
-    if (input.isBlank() || input == ".") return null
+    val normalized = normalizeAmountInput(input) ?: return null
+    if (normalized.isEmpty() || normalized == ".") return null
 
-    val parts = input.split('.', limit = 2)
-    val major = parts[0].ifEmpty { "0" }.toLongOrNull() ?: return null
-    val minor = parts.getOrNull(1)
-        ?.padEnd(2, '0')
-        ?.take(2)
-        ?.toLongOrNull()
-        ?: 0L
+    val major = normalized.substringBefore('.').ifEmpty { "0" }.toLong()
+    val minor = normalized.substringAfter('.', "").padEnd(2, '0').toLong()
+    if (major > (Long.MAX_VALUE - minor) / 100L) return null
     val amount = major * 100L + minor
     return amount.takeIf { it > 0L || (allowZero && it == 0L) }
 }
@@ -37,9 +34,8 @@ internal fun parseAmountInMinorUnits(
 internal fun formatMoney(amountMinor: Long): String {
     // 净支出允许为负（支出−收入）：负数按绝对值格式化并加负号前缀，避免整数除法的截断错误。
     val negative = amountMinor < 0L
-    val safeAbs = kotlin.math.abs(amountMinor)
-    val major = safeAbs / 100L
-    val minor = safeAbs % 100L
+    val major = kotlin.math.abs(amountMinor / 100L)
+    val minor = kotlin.math.abs(amountMinor % 100L)
     val groupedMajor = major.toString()
         .reversed()
         .chunked(3)
@@ -47,3 +43,6 @@ internal fun formatMoney(amountMinor: Long): String {
         .reversed()
     return (if (negative) "-" else "") + "¥$groupedMajor.${minor.toString().padStart(2, '0')}"
 }
+
+internal fun amountInputFromMinorUnits(amount: Long): String =
+    "${amount / 100}.${(amount % 100).toString().padStart(2, '0')}"

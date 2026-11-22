@@ -1,11 +1,13 @@
 package com.financeos.shared.domain.usecase
 
-import com.financeos.shared.domain.model.TransactionType
 import com.financeos.shared.domain.model.Transaction
+import com.financeos.shared.domain.model.TransactionAmount
+import com.financeos.shared.domain.model.TransactionType
 import com.financeos.shared.domain.repository.TransactionRepository
 import kotlin.time.Instant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 
@@ -35,11 +37,11 @@ class GetExpenseTrendUseCase(
 ) {
     suspend operator fun invoke(periods: List<ExpenseTrendPeriod>): List<ExpenseTrendPoint> {
         if (periods.isEmpty()) return emptyList()
-        val transactions = transactionRepository.getByPeriod(
+        val amounts = transactionRepository.getAmountsByPeriod(
             startInclusive = periods.minOf { it.startInclusive },
             endExclusive = periods.maxOf { it.endExclusive },
         )
-        return calculate(periods, transactions)
+        return TrendPeriods(periods).calculateAmounts(amounts)
     }
 
     /**
@@ -52,44 +54,89 @@ class GetExpenseTrendUseCase(
     ): Flow<List<List<ExpenseTrendPoint>>> {
         val periods = periodGroups.flatten()
         require(periods.isNotEmpty()) { "Expense trend groups must not be empty." }
-        return transactionRepository.observeByPeriod(
+        val groups = periodGroups.map(::TrendPeriods)
+        return transactionRepository.observeAmountsByPeriod(
             startInclusive = periods.minOf { it.startInclusive },
             endExclusive = periods.maxOf { it.endExclusive },
-        ).map { transactions ->
-            periodGroups.map { group -> calculate(group, transactions) }
-        }.flowOn(Dispatchers.Default)
+        ).map { amounts ->
+            groups.map { group -> group.calculateAmounts(amounts) }
+        }.distinctUntilChanged().flowOn(Dispatchers.Default)
     }
 
     /** 在已读取的流水快照上聚合，不进行数据库访问。 */
     fun calculate(
         periods: List<ExpenseTrendPeriod>,
         transactions: List<Transaction>,
-    ): List<ExpenseTrendPoint> = periods.map { period ->
-        // 趋势与首页「支出」/月总预算保持一致：按净支出（支出 − 收入）聚合，收入≥支出时为负（有结余）。
-        var expense = 0L
-        var income = 0L
-        for (transaction in transactions) {
-            if (transaction.dateTime < period.startInclusive ||
-                transaction.dateTime >= period.endExclusive
-            ) {
-                continue
-            }
-            when (transaction.type) {
-                TransactionType.EXPENSE -> {
-                    require(transaction.amount <= Long.MAX_VALUE - expense) {
-                        "Expense trend total exceeds Long range."
-                    }
-                    expense += transaction.amount
-                }
+    ): List<ExpenseTrendPoint> = TrendPeriods(periods).aggregate(
+        transactions,
+        dateTime = { if (it.deletedAt == null) it.dateTime else null },
+        type = Transaction::type,
+        amount = Transaction::amount,
+    )
+}
 
-                TransactionType.INCOME -> {
-                    require(transaction.amount <= Long.MAX_VALUE - income) {
-                        "Expense trend total exceeds Long range."
+/** 订阅期间只计算一次时间桶顺序，各次更新仅分配整型累计值。 */
+private class TrendPeriods(periods: List<ExpenseTrendPeriod>) {
+    private val original = periods.toList()
+    private val chronological = original.indices.sortedBy { original[it].startInclusive }.toIntArray()
+    private val disjoint = (1 until chronological.size).all { index ->
+        original[chronological[index - 1]].endExclusive <= original[chronological[index]].startInclusive
+    }
+
+    fun calculateAmounts(amounts: List<TransactionAmount>): List<ExpenseTrendPoint> =
+        aggregate(amounts, TransactionAmount::dateTime, TransactionAmount::type, TransactionAmount::amount)
+
+    inline fun <T> aggregate(
+        entries: List<T>,
+        dateTime: (T) -> Instant?,
+        type: (T) -> TransactionType,
+        amount: (T) -> Long,
+    ): List<ExpenseTrendPoint> {
+        if (original.isEmpty()) return emptyList()
+        val expense = LongArray(original.size)
+        val income = LongArray(original.size)
+        for (entry in entries) {
+            val time = dateTime(entry) ?: continue
+            if (disjoint) {
+                val position = findBucket(time)
+                if (position >= 0) accumulate(expense, income, position, type(entry), amount(entry))
+            } else {
+                for (position in chronological) {
+                    val period = original[position]
+                    if (time < period.startInclusive) break
+                    if (time < period.endExclusive) {
+                        accumulate(expense, income, position, type(entry), amount(entry))
                     }
-                    income += transaction.amount
                 }
             }
         }
-        ExpenseTrendPoint(key = period.key, amount = expense - income)
+        return original.mapIndexed { index, period ->
+            ExpenseTrendPoint(period.key, expense[index] - income[index])
+        }
+    }
+
+    private fun findBucket(time: Instant): Int {
+        var low = 0
+        var high = chronological.size
+        while (low < high) {
+            val middle = low + (high - low) / 2
+            if (original[chronological[middle]].startInclusive <= time) {
+                low = middle + 1
+            } else {
+                high = middle
+            }
+        }
+        if (low == 0) return -1
+        val position = chronological[low - 1]
+        return if (time < original[position].endExclusive) position else -1
+    }
+
+    private fun accumulate(
+        expense: LongArray, income: LongArray, position: Int, type: TransactionType, amount: Long,
+    ) {
+        val totals = if (type == TransactionType.EXPENSE) expense else income
+        val total = totals[position]
+        require(amount <= Long.MAX_VALUE - total) { "Expense trend total exceeds Long range." }
+        totals[position] = total + amount
     }
 }

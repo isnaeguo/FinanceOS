@@ -27,21 +27,15 @@ class CalculateDailyAvailableBudgetUseCase(
         currentDayOfMonth: Int,
         startOfToday: Instant,
     ): DailyAvailableBudget? {
-        val daysInMonth = period.month.daysInMonth()
-        require(currentDayOfMonth in 1..daysInMonth) {
-            "Current day must be valid for the budget month."
-        }
-        require(startOfToday >= period.startInclusive && startOfToday < period.endExclusive) {
-            "Start of today must be inside the budget month."
-        }
-
-        val totalBudget = budgetRepository.get(period.month, categoryId = null) ?: return null
+        val remainingDays = period.remainingDaysAt(currentDayOfMonth, startOfToday)
+        val totalBudget = budgetRepository.get(period.month, categoryId = null)?.takeUnless { it.deletedAt != null }
+            ?: return null
         return calculate(
             period = period,
-            currentDayOfMonth = currentDayOfMonth,
             startOfToday = startOfToday,
             totalBudget = totalBudget,
             transactions = getMonthlyTransactions(period),
+            remainingDays = remainingDays,
         )
     }
 
@@ -53,19 +47,24 @@ class CalculateDailyAvailableBudgetUseCase(
         totalBudget: Budget?,
         transactions: List<Transaction>,
     ): DailyAvailableBudget? {
-        val daysInMonth = period.month.daysInMonth()
-        require(currentDayOfMonth in 1..daysInMonth) {
-            "Current day must be valid for the budget month."
-        }
-        require(startOfToday >= period.startInclusive && startOfToday < period.endExclusive) {
-            "Start of today must be inside the budget month."
-        }
-        totalBudget ?: return null
+        val remainingDays = period.remainingDaysAt(currentDayOfMonth, startOfToday)
+        val activeBudget = totalBudget?.takeUnless { it.deletedAt != null } ?: return null
+        return calculate(period, startOfToday, activeBudget, transactions, remainingDays)
+    }
+
+    private fun calculate(
+        period: MonthPeriod,
+        startOfToday: Instant,
+        totalBudget: Budget,
+        transactions: List<Transaction>,
+        remainingDays: Int,
+    ): DailyAvailableBudget {
         val amountUsedBeforeToday = transactions
             .asSequence()
             .filter { transaction ->
-                transaction.type == TransactionType.EXPENSE &&
-                    transaction.dateTime < startOfToday
+                transaction.deletedAt == null &&
+                    transaction.type == TransactionType.EXPENSE &&
+                    transaction.dateTime >= period.startInclusive && transaction.dateTime < startOfToday
             }
             .fold(0L) { total, transaction ->
                 require(transaction.amount <= Long.MAX_VALUE - total) {
@@ -74,20 +73,32 @@ class CalculateDailyAvailableBudgetUseCase(
                 total + transaction.amount
             }
 
-        val amountRemaining = totalBudget.amountLimit - amountUsedBeforeToday
-        // 当天仍可消费，因此剩余天数包含当天；月末当天固定为 1 天。
-        val remainingDays = daysInMonth - currentDayOfMonth + 1
-        // 只统计今日零点前的支出，所以当天新增或删除流水不会反复改变这次分配。
-        // 超支后没有正的建议金额；整除向下舍弃不足一个最小货币单位的余数。
-        val dailyAmount = amountRemaining.coerceAtLeast(0L) / remainingDays
-
-        return DailyAvailableBudget(
-            dailyAmount = dailyAmount,
-            amountRemaining = amountRemaining,
-            remainingDays = remainingDays,
-            isOverBudget = amountRemaining < 0L,
-        )
+        return dailyBudgetFromExpenses(totalBudget.amountLimit, amountUsedBeforeToday, remainingDays)
     }
+}
+
+internal fun dailyBudgetFromExpenses(
+    amountLimit: Long,
+    amountUsedBeforeToday: Long,
+    remainingDays: Int,
+): DailyAvailableBudget {
+    val remaining = amountLimit - amountUsedBeforeToday
+    return DailyAvailableBudget(
+        dailyAmount = remaining.coerceAtLeast(0L) / remainingDays,
+        amountRemaining = remaining,
+        remainingDays = remainingDays,
+        isOverBudget = remaining < 0L,
+    )
+}
+
+/** 剩余天数包含今天，月末最后一天返回 1。 */
+internal fun MonthPeriod.remainingDaysAt(day: Int, startOfToday: Instant): Int {
+    val daysInMonth = month.daysInMonth()
+    require(day in 1..daysInMonth) { "Current day must be valid for the budget month." }
+    require(startOfToday >= startInclusive && startOfToday < endExclusive) {
+        "Start of today must be inside the budget month."
+    }
+    return daysInMonth - day + 1
 }
 
 private fun BudgetMonth.daysInMonth(): Int = when (month) {

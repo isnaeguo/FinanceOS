@@ -5,7 +5,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
-export JAVA_HOME="${JAVA_HOME:-/opt/homebrew/opt/openjdk@21}"
+export JAVA_HOME="${JAVA_HOME:-$(/usr/libexec/java_home -v 21)}"
 
 fail() {
   echo "❌ 构建失败：$1"

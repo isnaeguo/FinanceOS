@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C973741F2EAC465EA22F14D8 /* FinanceConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 790F610DDBC14A0780361118 /* FinanceConversationView.swift */; };
+		0144A67E4D7649449B6F22D0 /* FinanceWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7178230CB22404196FAEB2B /* FinanceWorkspaceView.swift */; };
+		D38306356FBC47209B033246 /* StatementImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0C095FCBC4F49B2FF287F /* StatementImportSheet.swift */; };
+		C7A5E54FC428468A98D3DD5B /* AiInsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F0DC523C7134F8480E0ED6C /* AiInsightsView.swift */; };
 		09B113765582393080A0868D /* TransactionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DB9F4654228C10A97CAA96C /* TransactionsView.swift */; };
 		0CA1C42C56291E5E00A5F9E0 /* LanShareView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18E9CAE7745061BA99487705 /* LanShareView.swift */; };
 		19D8DC05F2335E316B2AB8C4 /* FinanceStoreModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86B8BBBB0BBD2378D9461FB1 /* FinanceStoreModels.swift */; };
@@ -26,7 +30,6 @@
 		B65616AD7C6FFDCC1102334C /* FinanceOSShared.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 75132A9E2917DA21E070E5C4 /* FinanceOSShared.framework */; };
 		BAE7BD1440608DCE026EF24D /* WidgetDataLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0001F07AD86661E18D256B02 /* WidgetDataLoader.swift */; };
 		BEEE1874FD916F106B85C98B /* BudgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19D974847F1DFB895D8357C8 /* BudgetView.swift */; };
-		C21A5A0061CB8E342C25641E /* FinanceOSShared.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 75132A9E2917DA21E070E5C4 /* FinanceOSShared.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		CD1260688118ECE044C3BC73 /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F90B35924ED20302CE84C64 /* Components.swift */; };
 		E351B33039247EAA5CA893CE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E942A05AB51B24285C4BC01A /* Assets.xcassets */; };
 		E4508251AE14EC045656794A /* FinanceStoreAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBA0C4E492864411DFD98BAB /* FinanceStoreAdapter.swift */; };
@@ -54,20 +57,13 @@
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		DA052158CB1EC5F8D492C2B7 /* Embed Frameworks */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 10;
-			files = (
-				C21A5A0061CB8E342C25641E /* FinanceOSShared.framework in Embed Frameworks */,
-			);
-			name = "Embed Frameworks";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		790F610DDBC14A0780361118 /* FinanceConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinanceConversationView.swift; sourceTree = "<group>"; };
+		C7178230CB22404196FAEB2B /* FinanceWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinanceWorkspaceView.swift; sourceTree = "<group>"; };
+		A7C0C095FCBC4F49B2FF287F /* StatementImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatementImportSheet.swift; sourceTree = "<group>"; };
+		5F0DC523C7134F8480E0ED6C /* AiInsightsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AiInsightsView.swift; sourceTree = "<group>"; };
 		0001F07AD86661E18D256B02 /* WidgetDataLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetDataLoader.swift; sourceTree = "<group>"; };
 		0CF19A74BA61405D2549F4E5 /* FinanceOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinanceOSApp.swift; sourceTree = "<group>"; };
 		15C3A40A33A3D59A83C2BD04 /* DataBackupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataBackupView.swift; sourceTree = "<group>"; };
@@ -156,6 +152,10 @@
 				19D974847F1DFB895D8357C8 /* BudgetView.swift */,
 				8F90B35924ED20302CE84C64 /* Components.swift */,
 				97B700A7ED4666DE9F0633AB /* DashboardView.swift */,
+				5F0DC523C7134F8480E0ED6C /* AiInsightsView.swift */,
+				A7C0C095FCBC4F49B2FF287F /* StatementImportSheet.swift */,
+				C7178230CB22404196FAEB2B /* FinanceWorkspaceView.swift */,
+				790F610DDBC14A0780361118 /* FinanceConversationView.swift */,
 				15C3A40A33A3D59A83C2BD04 /* DataBackupView.swift */,
 				0CF19A74BA61405D2549F4E5 /* FinanceOSApp.swift */,
 				18E9CAE7745061BA99487705 /* LanShareView.swift */,
@@ -207,12 +207,10 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 647DBF2348530D872EECE54E /* Build configuration list for PBXNativeTarget "FinanceOS" */;
 			buildPhases = (
-				F10B829B591796F26D5817E2 /* Build KMP shared framework */,
 				BE31E3FBAF38BBD65F0188B7 /* Sources */,
 				A0A7EA476CB54A528B303E16 /* Resources */,
 				966FD5FE2201EF44CD694F79 /* Frameworks */,
 				AEF0F34498C1A0B9689EE22E /* Embed Foundation Extensions */,
-				DA052158CB1EC5F8D492C2B7 /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
@@ -292,26 +290,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "export JAVA_HOME=\"${JAVA_HOME:-/opt/homebrew/opt/openjdk@21}\"\nif [ -d \"$SRCROOT/build/shared-framework/FinanceOSShared.framework\" ] || [ -d \"$SRCROOT/build/shared-framework-widget/FinanceOSShared.framework\" ]; then\n  exit 0\nfi\ncd \"$SRCROOT/..\"\nCONFIGURATION_LOWER=\"$(echo \"$CONFIGURATION\" | tr '[:upper:]' '[:lower:]')\"\n./gradlew \":shared:link${CONFIGURATION}FrameworkMacosArm64\" -q\nrm -rf \"$SRCROOT/build/shared-framework\"\nmkdir -p \"$SRCROOT/build/shared-framework\"\ncp -R \"shared/build/bin/macosArm64/${CONFIGURATION_LOWER}Framework/FinanceOSShared.framework\" \"$SRCROOT/build/shared-framework/\"\n";
-		};
-		F10B829B591796F26D5817E2 /* Build KMP shared framework */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "Build KMP shared framework";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "export JAVA_HOME=\"${JAVA_HOME:-/opt/homebrew/opt/openjdk@21}\"\nif [ -d \"$SRCROOT/build/shared-framework/FinanceOSShared.framework\" ] || [ -d \"$SRCROOT/build/shared-framework-widget/FinanceOSShared.framework\" ]; then\n  exit 0\nfi\ncd \"$SRCROOT/..\"\nCONFIGURATION_LOWER=\"$(echo \"$CONFIGURATION\" | tr '[:upper:]' '[:lower:]')\"\n./gradlew \":shared:link${CONFIGURATION}FrameworkMacosArm64\" -q\nrm -rf \"$SRCROOT/build/shared-framework\"\nmkdir -p \"$SRCROOT/build/shared-framework\"\ncp -R \"shared/build/bin/macosArm64/${CONFIGURATION_LOWER}Framework/FinanceOSShared.framework\" \"$SRCROOT/build/shared-framework/\"\n";
+			shellScript = "\"$SRCROOT/build-shared-framework.sh\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -337,6 +316,10 @@
 				BEEE1874FD916F106B85C98B /* BudgetView.swift in Sources */,
 				CD1260688118ECE044C3BC73 /* Components.swift in Sources */,
 				A4180FC696A0F2560ED9909C /* DashboardView.swift in Sources */,
+				C7A5E54FC428468A98D3DD5B /* AiInsightsView.swift in Sources */,
+				D38306356FBC47209B033246 /* StatementImportSheet.swift in Sources */,
+				0144A67E4D7649449B6F22D0 /* FinanceWorkspaceView.swift in Sources */,
+				C973741F2EAC465EA22F14D8 /* FinanceConversationView.swift in Sources */,
 				6753250B9BCFB92757870986 /* DataBackupView.swift in Sources */,
 				586240B9871FC73EF2580CF7 /* FinanceOSApp.swift in Sources */,
 				A914E96EE1F9C8B3E55531DB /* FinanceStoreAdapter.swift in Sources */,
@@ -366,7 +349,7 @@
 				CODE_SIGN_ENTITLEMENTS = App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 14;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"\"build/shared-framework\"",
@@ -376,8 +359,8 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0.2;
-				OTHER_LDFLAGS = "$(inherited) -lsqlite3 -lc++";
+				MARKETING_VERSION = 1.2.0;
+				OTHER_LDFLAGS = "$(inherited) -lsqlite3 -lc++ -lz";
 				PRODUCT_BUNDLE_IDENTIFIER = com.financeos.mac;
 				SDKROOT = macosx;
 			};
@@ -390,7 +373,7 @@
 				CODE_SIGN_ENTITLEMENTS = Widget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 14;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"\"build/shared-framework\"",
@@ -401,8 +384,8 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0.2;
-				OTHER_LDFLAGS = "$(inherited) -lsqlite3 -lc++";
+				MARKETING_VERSION = 1.2.0;
+				OTHER_LDFLAGS = "$(inherited) -lsqlite3 -lc++ -lz";
 				PRODUCT_BUNDLE_IDENTIFIER = com.financeos.mac.widget;
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -416,7 +399,7 @@
 				CODE_SIGN_ENTITLEMENTS = Widget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 14;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"\"build/shared-framework\"",
@@ -427,8 +410,8 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0.2;
-				OTHER_LDFLAGS = "$(inherited) -lsqlite3 -lc++";
+				MARKETING_VERSION = 1.2.0;
+				OTHER_LDFLAGS = "$(inherited) -lsqlite3 -lc++ -lz";
 				PRODUCT_BUNDLE_IDENTIFIER = com.financeos.mac.widget;
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -488,7 +471,7 @@
 				SDKROOT = macosx;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
-				SWIFT_VERSION = 5.9;
+				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
 		};
@@ -499,7 +482,7 @@
 				CODE_SIGN_ENTITLEMENTS = App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 14;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"\"build/shared-framework\"",
@@ -509,8 +492,8 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0.2;
-				OTHER_LDFLAGS = "$(inherited) -lsqlite3 -lc++";
+				MARKETING_VERSION = 1.2.0;
+				OTHER_LDFLAGS = "$(inherited) -lsqlite3 -lc++ -lz";
 				PRODUCT_BUNDLE_IDENTIFIER = com.financeos.mac;
 				SDKROOT = macosx;
 			};
@@ -576,7 +559,7 @@
 				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-				SWIFT_VERSION = 5.9;
+				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
 		};

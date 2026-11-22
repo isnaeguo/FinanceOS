@@ -1,15 +1,19 @@
 package com.financeos.shared.domain.repository
 
 import com.financeos.shared.domain.model.Transaction
+import com.financeos.shared.domain.model.TransactionAmount
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlin.time.Instant
 
 /** 定义流水存取所需的最小业务能力，不暴露具体存储技术。 */
 interface TransactionRepository {
     /** 新增一笔流水。 */
+    @Throws(Exception::class)
     suspend fun add(transaction: Transaction)
 
     /** 按 ID 删除流水；实际删除成功时返回 `true`。 */
+    @Throws(Exception::class)
     suspend fun delete(id: String): Boolean
 
     /** 按 ID 获取流水，不存在时返回 `null`。 */
@@ -37,6 +41,19 @@ interface TransactionRepository {
         endExclusive: Instant,
     ): Flow<List<Transaction>>
 
+    /** 读取或观察趋势所需字段，存储实现可直接投影数据库列。 */
+    suspend fun getAmountsByPeriod(
+        startInclusive: Instant,
+        endExclusive: Instant,
+    ): List<TransactionAmount> =
+        getByPeriod(startInclusive, endExclusive).visibleAmounts()
+
+    fun observeAmountsByPeriod(
+        startInclusive: Instant,
+        endExclusive: Instant,
+    ): Flow<List<TransactionAmount>> =
+        observeByPeriod(startInclusive, endExclusive).map { it.visibleAmounts() }
+
     /**
      * 获取指定本地月份对应的流水。
      *
@@ -57,4 +74,8 @@ interface TransactionRepository {
         startInclusive: Instant,
         endExclusive: Instant,
     ): Flow<List<Transaction>>
+}
+
+private fun List<Transaction>.visibleAmounts(): List<TransactionAmount> = mapNotNull { entry ->
+    if (entry.deletedAt == null) TransactionAmount(entry.amount, entry.type, entry.dateTime) else null
 }

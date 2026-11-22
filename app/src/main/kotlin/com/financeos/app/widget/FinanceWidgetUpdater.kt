@@ -9,9 +9,7 @@ import com.financeos.app.MainActivity
 import com.financeos.app.R
 import com.financeos.app.data.FinanceDataBridge
 import com.financeos.app.ui.viewmodel.toMonthPeriod
-import com.financeos.shared.domain.usecase.CalculateDailyAvailableBudgetUseCase
-import com.financeos.shared.domain.usecase.GetMonthlySummaryUseCase
-import com.financeos.shared.domain.usecase.GetMonthlyTransactionsUseCase
+import com.financeos.shared.data.local.repository.LocalFinanceDataRepository
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
@@ -41,9 +39,7 @@ internal data class FinanceWidgetData(
 /**
  * 小组件纯逻辑：读取当月数据并构建 RemoteViews。
  *
- * 计算口径与首页 Dashboard 保持一致（参考 DashboardViewModel.buildDashboardSnapshot）：
- * 当月流水按用户时区的月份半开区间读取；本月已用为当月支出合计；本月剩余用月总预算扣减；
- * 每日可用采用 CalculateDailyAvailableBudgetUseCase 的纯计算语义（含今天）。
+ * 当月已用为支出合计；每日可用使用今天零点前的支出预算。
  */
 internal object FinanceWidgetUpdater {
 
@@ -56,50 +52,21 @@ internal object FinanceWidgetUpdater {
         val period = YearMonth.from(today).toMonthPeriod(zoneId)
         val bridge = FinanceDataBridge.get(context)
 
-        val getMonthlyTransactions = GetMonthlyTransactionsUseCase(bridge.transactionRepository)
-        val transactions = bridge.transactionRepository.getByMonth(
-            startInclusive = period.startInclusive,
-            endExclusive = period.endExclusive,
-        )
-        val summary = GetMonthlySummaryUseCase(getMonthlyTransactions).calculate(transactions)
-        val used = summary.totalExpense
-        val totalBudget = bridge.budgetRepository.get(period.month, categoryId = null)
-        val remaining = totalBudget?.let { it.amountLimit - used }
-        val hasBudget = totalBudget != null
-
         val startOfToday = Instant.fromEpochMilliseconds(
             today.atStartOfDay(zoneId).toInstant().toEpochMilli(),
         )
-        val dailyAvailable = CalculateDailyAvailableBudgetUseCase(
-            budgetRepository = bridge.budgetRepository,
-            getMonthlyTransactions = getMonthlyTransactions,
-        ).calculate(
+        val overview = LocalFinanceDataRepository(bridge.database).monthlyBudgetOverview(
             period = period,
-            currentDayOfMonth = today.dayOfMonth,
+            dayOfMonth = today.dayOfMonth,
             startOfToday = startOfToday,
-            totalBudget = totalBudget,
-            transactions = transactions,
         )
 
         return FinanceWidgetData(
-            monthlyUsedText = formatMoneyWholeYuan(used),
-            dailyAvailableText = when {
-                !hasBudget -> "未设预算"
-                else -> formatMoneyWholeYuan(dailyAvailable?.dailyAmount ?: 0L)
-            },
-            remainingText = if (!hasBudget) {
-                "未设预算"
-            } else {
-                // 已设预算时 remaining 一定非空，这里兜底以避免空安全误判。
-                val remainingAfterBudget = remaining ?: 0L
-                if (remainingAfterBudget < 0L) {
-                    "-" + formatMoneyWholeYuan(-remainingAfterBudget)
-                } else {
-                    formatMoneyWholeYuan(remainingAfterBudget)
-                }
-            },
-            hasBudget = hasBudget,
-            overBudget = remaining != null && remaining < 0L,
+            monthlyUsedText = formatMoneyWholeYuan(overview.amountUsed),
+            dailyAvailableText = overview.dailyAvailable?.let(::formatMoneyWholeYuan) ?: "未设预算",
+            remainingText = overview.amountRemaining?.let(::formatMoneyWholeYuan) ?: "未设预算",
+            hasBudget = overview.amountRemaining != null,
+            overBudget = overview.isOverBudget,
         )
     }
 
@@ -158,15 +125,15 @@ internal object FinanceWidgetUpdater {
     }
 
 /** 小组件金额：四舍五入到整数“元”，千分位显示，节省 2x1 空间。 */
-private fun formatMoneyWholeYuan(minor: Long): String {
-    val sign = if (minor < 0) "-" else ""
-    val magnitude = kotlin.math.abs(minor)
-    val rounded = (magnitude + 50) / 100
-    val grouped = rounded.toString()
-        .reversed()
-        .chunked(3)
-        .joinToString(",")
-        .reversed()
-    return "$sign¥$grouped"
-}
+    private fun formatMoneyWholeYuan(minor: Long): String {
+        val sign = if (minor < 0) "-" else ""
+        val yuan = kotlin.math.abs(minor / 100L)
+        val rounded = yuan + (kotlin.math.abs(minor % 100L) + 50L) / 100L
+        val grouped = rounded.toString()
+            .reversed()
+            .chunked(3)
+            .joinToString(",")
+            .reversed()
+        return "$sign¥$grouped"
+    }
 }

@@ -46,3 +46,12 @@ data class Budget(
         }
     }
 }
+
+/** 小组件当月数据。剩余预算纳入当月全部支出，每日可用只纳入今天零点前的支出。 */
+data class MonthlyBudgetOverview(
+    val amountUsed: Long,
+    val amountRemaining: Long?,
+    val dailyAvailable: Long?,
+) {
+    val isOverBudget: Boolean get() = amountRemaining != null && amountRemaining < 0L
+}

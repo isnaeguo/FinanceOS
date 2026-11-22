@@ -36,7 +36,12 @@ object StableRowId {
         return "bill-" + fnv1a64(body)
     }
 
-    private fun clean(text: String): String = text.trim().replace(Regex("\\s+"), "")
+    internal fun generateStatementId(fields: List<String>): String =
+        "statement-" + fnv1a64(fields.joinToString("") { "${it.length}:$it" })
+
+    private val whitespace = Regex("\\s+")
+
+    private fun clean(text: String): String = text.trim().replace(whitespace, "")
 
     private fun fnv1a64(text: String): String {
         var hash = FNV_OFFSET_BASIS

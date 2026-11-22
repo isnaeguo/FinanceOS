@@ -57,6 +57,18 @@ class FinanceDataCodecTest {
     }
 
     @Test
+    fun jsonRejectsMissingBackupMetadataOrLedgerSections() {
+        val codec = FinanceDataJsonCodec()
+        assertFailsWith<DataTransferException> { codec.decode("{}") }
+        assertFailsWith<DataTransferException> { codec.decode("""{"transactions": []}""") }
+        assertFailsWith<DataTransferException> {
+            codec.decode("""{"format":"financeos-backup","schema_version":2,"transactions":[]}""")
+        }
+        val empty = FinanceDataSnapshot(emptyList(), emptyList(), emptyList())
+        assertEquals(empty, codec.decode(codec.encode(empty)))
+    }
+
+    @Test
     fun jsonRejectsNegativeUpdatedAt() {
         val content = FinanceDataJsonCodec()
             .encode(sampleSnapshot())
@@ -75,6 +87,7 @@ class FinanceDataCodecTest {
         val clock = EpochClock { 1_756_896_000_000L }
         val transaction = sampleSnapshot().transactions.single().copy(
             note = "午饭, 加饮料\n备注里有\"引号\"",
+            deletedAt = null,
         )
 
         val encoded = TransactionCsvCodec(clock).encode(listOf(transaction))
@@ -87,6 +100,13 @@ class FinanceDataCodecTest {
         )
         assertTrue(encoded.startsWith("\uFEFF"))
         assertTrue(encoded.contains("23.50"))
+    }
+
+    @Test
+    fun csvDoesNotExportDeletedTransactionsAsActiveRows() {
+        val codec = TransactionCsvCodec()
+        val encoded = codec.encode(sampleSnapshot().transactions)
+        assertTrue(codec.decode(encoded).isEmpty())
     }
 
     @Test

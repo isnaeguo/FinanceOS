@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -35,10 +34,10 @@ internal fun EmptyState(
             contentDescription = null,
             tint = MaterialTheme.colorScheme.primary,
         )
-        Text(text = title, color = glassCardSecondaryText(), style = MaterialTheme.typography.titleLarge)
+        Text(text = title, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.titleLarge)
         Text(
             text = description,
-            color = glassCardSecondaryText(),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
         )
@@ -61,10 +60,10 @@ internal fun LoadingState(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        CircularProgressIndicator()
+        GeometryLoader()
         Text(
             text = label,
-            color = glassCardSecondaryText(),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyMedium,
         )
     }

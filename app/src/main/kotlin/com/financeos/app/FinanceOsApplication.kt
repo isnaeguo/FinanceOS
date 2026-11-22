@@ -5,8 +5,11 @@ import android.content.Context
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.financeos.app.ai.AiConnectionStore
+import com.financeos.app.workspace.WorkspaceViewModel
 import com.financeos.app.data.FinanceDataBridge
 import com.financeos.app.ui.viewmodel.AddTransactionViewModel
+import com.financeos.app.ui.viewmodel.AiAnalysisViewModel
 import com.financeos.app.ui.viewmodel.BudgetViewModel
 import com.financeos.app.ui.viewmodel.DashboardViewModel
 import com.financeos.app.ui.viewmodel.DataTransferViewModel
@@ -73,12 +76,16 @@ internal class FinanceOsAppContainer(context: Context) {
         repository = localFinanceDataRepository,
     )
     private val documentStore = AndroidDocumentStore(context)
+    private val aiConnectionStore by lazy { AiConnectionStore(context) }
 
-    val addTransactionViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
+    fun addTransactionViewModelFactory(editId: String? = null): ViewModelProvider.Factory = viewModelFactory {
         initializer {
             AddTransactionViewModel(
                 addTransactionUseCase = addTransactionUseCase,
                 categoryRepository = categoryRepository,
+                editId = editId,
+                loadTransaction = transactionRepository::get,
+                updateTransaction = transactionRepository::update,
             )
         }
     }
@@ -100,6 +107,7 @@ internal class FinanceOsAppContainer(context: Context) {
                 getMonthlyTransactions = getMonthlyTransactionsUseCase,
                 budgetRepository = budgetRepository,
                 categoryRepository = categoryRepository,
+                deleteBudget = budgetRepository::delete,
             )
         }
     }
@@ -127,6 +135,23 @@ internal class FinanceOsAppContainer(context: Context) {
                 documentStore = documentStore,
                 loadCategories = { categoryRepository.getAll() },
             )
+        }
+    }
+
+    val aiAnalysisViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
+        initializer {
+            AiAnalysisViewModel(
+                store = aiConnectionStore,
+                transactions = transactionRepository,
+                categories = categoryRepository,
+                budgets = budgetRepository,
+            )
+        }
+    }
+
+    val workspaceViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
+        initializer {
+            WorkspaceViewModel(context, transactionRepository, categoryRepository, aiConnectionStore, localFinanceDataRepository)
         }
     }
 

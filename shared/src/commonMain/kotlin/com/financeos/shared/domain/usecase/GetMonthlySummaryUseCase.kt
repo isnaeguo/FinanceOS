@@ -26,7 +26,8 @@ class GetMonthlySummaryUseCase(
         var totalExpense = 0L
         val expensesByCategory = linkedMapOf<String, Long>()
 
-        transactions.forEach { transaction ->
+        for (transaction in transactions) {
+            if (transaction.deletedAt != null) continue
             when (transaction.type) {
                 TransactionType.INCOME -> {
                     totalIncome = addMoney(totalIncome, transaction.amount)

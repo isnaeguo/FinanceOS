@@ -1,6 +1,7 @@
 package com.financeos.shared.bridge
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
@@ -19,17 +20,29 @@ import com.financeos.shared.domain.model.Transaction
  */
 public sealed class FlowReader<T : Any>(flow: Flow<T>) : AutoCloseable {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val channel: Channel<T> = Channel(Channel.UNLIMITED)
+    private val channel: Channel<T> = Channel(Channel.CONFLATED)
 
     init {
         scope.launch {
-            flow.collect { channel.send(it) }
-            channel.close()
+            try {
+                flow.collect { channel.send(it) }
+                channel.close()
+            } catch (error: CancellationException) {
+                channel.close()
+                throw error
+            } catch (error: Exception) {
+                channel.close(error)
+            }
         }
     }
 
     /** 等待并返回下一个值；流结束或读取器关闭后返回 `null`。 */
-    public suspend fun next(): T? = channel.receiveCatching().getOrNull()
+    @Throws(Exception::class)
+    public suspend fun next(): T? {
+        val result = channel.receiveCatching()
+        result.exceptionOrNull()?.let { throw it }
+        return result.getOrNull()
+    }
 
     override fun close() {
         scope.cancel()

@@ -1,12 +1,10 @@
 package com.financeos.app.ui.screens
-import com.financeos.app.ui.components.glassCardSecondaryText
-import com.financeos.app.ui.components.glassTextFieldColors
 
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,10 +13,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
@@ -36,7 +34,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -47,6 +44,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.financeos.app.ui.components.MonthSelector
@@ -61,7 +59,7 @@ import com.financeos.app.ui.viewmodel.TransactionsEvent
 import com.financeos.app.ui.viewmodel.TransactionsUiState
 import com.financeos.app.ui.viewmodel.TransactionsViewModel
 import com.financeos.shared.domain.model.TransactionType
-import com.financeos.app.ui.components.GlassIconCircle
+import com.financeos.app.ui.components.CategoryBadge
 import androidx.compose.ui.graphics.Color
 
 /** 连接流水 ViewModel 与页面内容。 */
@@ -69,6 +67,7 @@ import androidx.compose.ui.graphics.Color
 internal fun TransactionsRoute(
     viewModel: TransactionsViewModel,
     onAddTransaction: () -> Unit,
+    onEditTransaction: (String) -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -97,9 +96,7 @@ internal fun TransactionsRoute(
         onDeleteRequested = viewModel::requestDelete,
         onDeleteConfirmed = viewModel::confirmDelete,
         onDeleteDismissed = viewModel::dismissDelete,
-        onRecategorizeRequested = viewModel::requestRecategorize,
-        onRecategorizeConfirmed = viewModel::applyRecategorize,
-        onRecategorizeDismissed = viewModel::dismissRecategorize,
+        onEditTransaction = onEditTransaction,
     )
 }
 
@@ -121,9 +118,7 @@ internal fun TransactionsScreen(
     onDeleteRequested: (String) -> Unit,
     onDeleteConfirmed: () -> Unit,
     onDeleteDismissed: () -> Unit,
-    onRecategorizeRequested: (String) -> Unit,
-    onRecategorizeConfirmed: (String) -> Unit,
-    onRecategorizeDismissed: () -> Unit,
+    onEditTransaction: (String) -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -134,7 +129,14 @@ internal fun TransactionsScreen(
                 onNextMonth = onNextMonth,
             )
             TransactionFilters(
-                uiState = uiState,
+                searchQuery = uiState.searchQuery,
+                selectedType = uiState.selectedType,
+                selectedCategoryId = uiState.selectedCategoryId,
+                selectedAccount = uiState.selectedAccount,
+                amountSort = uiState.amountSort,
+                categoryOptions = uiState.categoryOptions,
+                accountOptions = uiState.accountOptions,
+                hasActiveFilters = uiState.hasActiveFilters,
                 onSearchQueryChange = onSearchQueryChange,
                 onTypeSelected = onTypeSelected,
                 onCategorySelected = onCategorySelected,
@@ -187,7 +189,7 @@ internal fun TransactionsScreen(
                         TransactionList(
                             items = uiState.items,
                             onDeleteRequested = onDeleteRequested,
-                            onRecategorizeRequested = onRecategorizeRequested,
+                            onEditTransaction = onEditTransaction,
                         )
                     }
                 }
@@ -208,57 +210,18 @@ internal fun TransactionsScreen(
             onDismiss = onDeleteDismissed,
         )
     }
-
-    uiState.pendingCategoryItem?.let { item ->
-        RecategorizeDialog(
-            item = item,
-            options = uiState.categoryOptions,
-            isUpdating = uiState.isUpdatingCategory,
-            onSelect = { categoryId -> onRecategorizeConfirmed(categoryId) },
-            onDismiss = onRecategorizeDismissed,
-        )
-    }
-}
-
-@Composable
-private fun RecategorizeDialog(
-    item: TransactionItemUiState,
-    options: List<TransactionFilterOption>,
-    isUpdating: Boolean,
-    onSelect: (String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = { if (!isUpdating) onDismiss() },
-        title = { Text("选择新分类") },
-        text = {
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                items(options.size) { index ->
-                    val option = options[index]
-                    TextButton(
-                        onClick = { onSelect(option.id) },
-                        enabled = !isUpdating,
-                    ) {
-                        Text(option.label)
-                    }
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !isUpdating) {
-                Text("取消")
-            }
-        },
-    )
 }
 
 @Composable
 private fun TransactionFilters(
-    uiState: TransactionsUiState,
+    searchQuery: String,
+    selectedType: TransactionType?,
+    selectedCategoryId: String?,
+    selectedAccount: AccountFilter,
+    amountSort: AmountSort,
+    categoryOptions: List<TransactionFilterOption>,
+    accountOptions: List<TransactionFilterOption>,
+    hasActiveFilters: Boolean,
     onSearchQueryChange: (String) -> Unit,
     onTypeSelected: (TransactionType?) -> Unit,
     onCategorySelected: (String?) -> Unit,
@@ -271,18 +234,17 @@ private fun TransactionFilters(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         OutlinedTextField(
-            value = uiState.searchQuery,
+            value = searchQuery,
             onValueChange = onSearchQueryChange,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp),
-            label = { Text("搜索备注") },
+            label = { Text("搜索备注、分类或账户") },
             placeholder = { Text("例如：午饭") },
-            colors = glassTextFieldColors(),
             leadingIcon = {
                 Icon(imageVector = Icons.Default.Search, contentDescription = null)
             },
-            trailingIcon = if (uiState.searchQuery.isNotEmpty()) {
+            trailingIcon = if (searchQuery.isNotEmpty()) {
                 {
                     IconButton(onClick = { onSearchQueryChange("") }) {
                         Icon(imageVector = Icons.Default.Close, contentDescription = "清除搜索")
@@ -295,53 +257,53 @@ private fun TransactionFilters(
         )
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp),
         ) {
             item {
                 FilterChip(
-                    selected = uiState.selectedType == null,
+                    selected = selectedType == null,
                     onClick = { onTypeSelected(null) },
                     label = { Text("全部") },
                 )
             }
             item {
                 FilterChip(
-                    selected = uiState.selectedType == TransactionType.EXPENSE,
+                    selected = selectedType == TransactionType.EXPENSE,
                     onClick = { onTypeSelected(TransactionType.EXPENSE) },
                     label = { Text("支出") },
                 )
             }
             item {
                 FilterChip(
-                    selected = uiState.selectedType == TransactionType.INCOME,
+                    selected = selectedType == TransactionType.INCOME,
                     onClick = { onTypeSelected(TransactionType.INCOME) },
                     label = { Text("收入") },
                 )
             }
             item {
                 FilterOptionMenu(
-                    label = uiState.selectedCategoryId?.let { selectedId ->
-                        uiState.categoryOptions.firstOrNull { it.id == selectedId }?.label
+                    label = selectedCategoryId?.let { selectedId ->
+                        categoryOptions.firstOrNull { it.id == selectedId }?.label
                     } ?: "全部分类",
-                    selected = uiState.selectedCategoryId != null,
+                    selected = selectedCategoryId != null,
                     allLabel = "全部分类",
-                    options = uiState.categoryOptions,
+                    options = categoryOptions,
                     onAllSelected = { onCategorySelected(null) },
                     onSelected = { onCategorySelected(it.id) },
                 )
             }
             item {
-                val accountLabel = when (val account = uiState.selectedAccount) {
+                val accountLabel = when (val account = selectedAccount) {
                     AccountFilter.All -> "全部账户"
                     AccountFilter.Unspecified -> "未指定账户"
                     is AccountFilter.Specific -> account.accountId
                 }
                 FilterOptionMenu(
                     label = accountLabel,
-                    selected = uiState.selectedAccount != AccountFilter.All,
+                    selected = selectedAccount != AccountFilter.All,
                     allLabel = "全部账户",
                     includeUnspecified = true,
-                    options = uiState.accountOptions,
+                    options = accountOptions,
                     onAllSelected = { onAccountSelected(AccountFilter.All) },
                     onUnspecifiedSelected = { onAccountSelected(AccountFilter.Unspecified) },
                     onSelected = { onAccountSelected(AccountFilter.Specific(it.id)) },
@@ -349,11 +311,11 @@ private fun TransactionFilters(
             }
             item {
                 AmountSortMenu(
-                    selected = uiState.amountSort,
+                    selected = amountSort,
                     onSelected = onSortSelected,
                 )
             }
-            if (uiState.hasActiveFilters) {
+            if (hasActiveFilters) {
                 item {
                     TextButton(onClick = onClearFilters) {
                         Text("清除")
@@ -448,81 +410,81 @@ private fun AmountSortMenu(
 private fun TransactionList(
     items: List<TransactionItemUiState>,
     onDeleteRequested: (String) -> Unit,
-    onRecategorizeRequested: (String) -> Unit,
+    onEditTransaction: (String) -> Unit,
 ) {
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        items(
-            items = items,
-            key = TransactionItemUiState::id,
-        ) { item ->
-            ListItem(
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                leadingContent = {
-                    GlassIconCircle(
-                        tint = MaterialTheme.colorScheme.secondary,
-                        size = 44.dp,
-                    ) {
-                        Icon(
-                            imageVector = categoryIcon(item.categoryIconKey),
-                            contentDescription = null,
-                            tint = glassCardSecondaryText(),
-                        )
-                    }
-                },
-                headlineContent = { Text(item.categoryName) },
-                supportingContent = {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        item.note?.let { note ->
-                            Text(note, maxLines = 2)
-                        }
-                        // 明确显示“收入/支出”文字及正负号，不让方向信息只依赖颜色。
-                        Text(
-                            text = "${item.typeLabel} · ${item.dateTimeText}",
-                            color = glassCardSecondaryText(),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                },
-                trailingContent = {
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            text = item.amountText,
-                            color = if (item.isExpense) {
-                                MaterialTheme.colorScheme.error
-                            } else {
-                                MaterialTheme.colorScheme.primary
-                            },
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontFeatureSettings = "tnum",
-                            ),
-                        )
-                        IconButton(onClick = { onRecategorizeRequested(item.id) }) {
-                            Icon(
-                                imageVector = Icons.Default.Edit,
-                                contentDescription = "改${item.categoryName}的分类",
-                                tint = glassCardSecondaryText(),
-                            )
-                        }
-                        IconButton(onClick = { onDeleteRequested(item.id) }) {
-                            Icon(
-                                imageVector = Icons.Default.Delete,
-                                contentDescription = "删除${item.categoryName}流水",
-                                tint = glassCardSecondaryText(),
-                            )
-                        }
-                    }
-                },
-                modifier = Modifier
-                    .animateItem(
-                        fadeInSpec = tween(160),
-                        placementSpec = tween(180, easing = FastOutSlowInEasing),
-                        fadeOutSpec = tween(120),
-                    )
-                    .padding(horizontal = 4.dp),
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 88.dp),
+    ) {
+        items(items, key = TransactionItemUiState::id) { item ->
+            TransactionRow(
+                item = item,
+                onEdit = { onEditTransaction(item.id) },
+                onDelete = { onDeleteRequested(item.id) },
             )
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp))
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
         }
     }
+}
+
+@Composable
+private fun TransactionRow(item: TransactionItemUiState, onEdit: () -> Unit, onDelete: () -> Unit) {
+    var menuOpen by remember(item.id) { mutableStateOf(false) }
+    val colors = MaterialTheme.colorScheme
+    ListItem(
+        modifier = Modifier.clickable(onClickLabel = "编辑流水", onClick = onEdit),
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        leadingContent = {
+            CategoryBadge {
+                Icon(categoryIcon(item.categoryIconKey), contentDescription = null, tint = colors.onSecondaryContainer)
+            }
+        },
+        headlineContent = { Text(item.categoryName, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        supportingContent = {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                item.note?.let { Text(it, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+                Text(
+                    text = item.detailText,
+                    color = colors.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        },
+        trailingContent = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = item.amountText,
+                    color = if (item.isExpense) colors.onSurface else colors.primary,
+                    style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
+                )
+                Box {
+                    IconButton(onClick = { menuOpen = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "流水操作")
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text("编辑") },
+                            leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                            onClick = {
+                                menuOpen = false
+                                onEdit()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("删除", color = colors.error) },
+                            leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = colors.error) },
+                            onClick = {
+                                menuOpen = false
+                                onDelete()
+                            },
+                        )
+                    }
+                }
+            }
+        },
+    )
 }
 
 @Composable

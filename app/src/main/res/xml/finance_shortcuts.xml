@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="record"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_record">
+        <intent
+            android:action="com.financeos.app.action.ADD_TRANSACTION"
+            android:targetPackage="com.financeos.app"
+            android:targetClass="com.financeos.app.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="workspace"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_workspace">
+        <intent
+            android:action="com.financeos.app.action.OPEN_WORKSPACE"
+            android:targetPackage="com.financeos.app"
+            android:targetClass="com.financeos.app.MainActivity" />
+    </shortcut>
+</shortcuts>

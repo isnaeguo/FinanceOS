@@ -8,7 +8,7 @@ import kotlin.math.abs
 object LanSyncPolicy {
     /** 时间戳新鲜度：|now - ts| 超出容忍窗口视为重放/过期。 */
     fun isTimestampFresh(ts: Long, nowMillis: Long): Boolean =
-        abs(nowMillis - ts) <= LanSyncSpec.TS_TOLERANCE_MILLIS
+        ts >= 0 && nowMillis >= 0 && abs(nowMillis - ts) <= LanSyncSpec.TS_TOLERANCE_MILLIS
 
     /** 旧版明文客户端升级提示（HTTP 426）。 */
     fun upgradeRequiredBody(): String = jsonError("对方客户端版本过旧，请升级 FinanceOS")

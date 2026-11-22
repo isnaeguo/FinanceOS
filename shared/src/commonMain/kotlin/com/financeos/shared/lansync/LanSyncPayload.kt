@@ -32,9 +32,13 @@ data class LanSyncPayload(
         /** POST 推送后服务端应答的 kind（body 为 {"imported":{...}} JSON）。 */
         const val KIND_IMPORT_RESULT = "import_result"
 
-        private val json = Json { ignoreUnknownKeys = true }
+        private val json = Json {
+            ignoreUnknownKeys = true
+            encodeDefaults = true
+        }
 
         /** 从字节解析；proto/alg 校验失败抛 [LanSyncException]。 */
+        @Throws(LanSyncException::class)
         fun decode(bytes: ByteArray): LanSyncPayload {
             val payload = try {
                 json.decodeFromString(LanSyncPayload.serializer(), bytes.decodeToString())

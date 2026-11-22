@@ -70,7 +70,7 @@ enum class SpendingTrendRange(val days: Int, val label: String) {
 data class DashboardTrendPointUiState(
     val label: String,
     val amountText: String,
-    val progress: Float,
+    val normalizedAmount: Float,
 )
 
 /** 首页第一屏及后续列表所需的完整聚合状态。 */
@@ -425,18 +425,13 @@ internal fun buildDashboardUiState(
     )
 }
 
-private fun List<ExpenseTrendPoint>.toDashboardTrend(): List<DashboardTrendPointUiState> {
-    // 趋势金额为净支出（可负）：分母取绝对值的最大值，progress 夹到 0..1，避免负值导致比例越界。
-    val maximum = maxOfOrNull { kotlin.math.abs(it.amount) } ?: 0L
+internal fun List<ExpenseTrendPoint>.toDashboardTrend(): List<DashboardTrendPointUiState> {
+    val maximum = maxOfOrNull { abs(it.amount.toDouble()) } ?: 0.0
     return map { point ->
         DashboardTrendPointUiState(
             label = point.key,
             amountText = formatMoney(point.amount),
-            progress = if (maximum == 0L) {
-                0f
-            } else {
-                (point.amount.toFloat() / maximum.toFloat()).coerceIn(0f, 1f)
-            },
+            normalizedAmount = if (maximum == 0.0) 0f else (point.amount / maximum).toFloat(),
         )
     }
 }

@@ -81,6 +81,13 @@ class BudgetCalculatorTest {
     }
 
     @Test
+    fun largeIncomeCannotOverflowIntoNegativeBudgetRemaining() {
+        val usage = BudgetCalculator.calculate(budget(amountLimit = Long.MAX_VALUE), amountUsed = -1L)
+        assertEquals(Long.MAX_VALUE, usage.amountRemaining)
+        assertFalse(usage.isOverBudget)
+    }
+
+    @Test
     fun validatesMonthAndOptionalCategory() {
         assertFailsWith<IllegalArgumentException> {
             BudgetMonth(year = 2026, month = 13)

@@ -20,8 +20,8 @@ android {
         applicationId = "com.financeos.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 11
-        versionName = "1.0.3"
+        versionCode = 14
+        versionName = "1.2.0"
     }
 
     compileOptions {
@@ -60,7 +60,6 @@ dependencies {
     implementation(project(":shared"))
 
     implementation(libs.androidx.activity.compose)
-    implementation(libs.haze)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.material.icons.core)
     implementation(libs.androidx.compose.material3)
@@ -69,6 +68,7 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.room3.runtime)
     implementation(libs.kotlinx.coroutines.core)
+    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
 
     testImplementation(kotlin("test-junit"))
 }

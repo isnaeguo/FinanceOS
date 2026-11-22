@@ -1,4 +1,102 @@
 import SwiftUI
+import AppKit
+
+enum WorkspacePalette {
+    static let background = adaptive(0xf2f4f6, 0x0c0e11)
+    static let panel = adaptive(0xffffff, 0x15181d)
+    static let raised = adaptive(0xe9eef3, 0x1d232b)
+    static let border = adaptive(0xcdd4dc, 0x343c47)
+    static let accent = adaptive(0x254a70, 0xb9d2eb)
+    static let secondary = adaptive(0x4c5a69, 0xaebac7)
+    static let negative = adaptive(0x9f4226, 0xffae91)
+
+    private static func adaptive(_ light: UInt32, _ dark: UInt32) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let hex = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
+            return NSColor(srgbRed: CGFloat((hex >> 16) & 255) / 255,
+                           green: CGFloat((hex >> 8) & 255) / 255,
+                           blue: CGFloat(hex & 255) / 255, alpha: 1)
+        })
+    }
+}
+
+enum FinanceMotion {
+    static let short = Animation.easeOut(duration: 0.18)
+    static let reveal = AnyTransition.asymmetric(
+        insertion: .opacity.combined(with: .offset(y: 5)), removal: .identity
+    )
+}
+
+enum FinanceGlyph: Shape {
+    case inbox, accounts, forecast, books, chat
+
+    func path(in rect: CGRect) -> Path {
+        let side = min(rect.width, rect.height) / 24
+        let origin = CGPoint(x: rect.midX - 12 * side, y: rect.midY - 12 * side)
+        var path = Path()
+        func line(_ points: [CGPoint], closed: Bool = false) {
+            guard let first = points.first else { return }
+            func point(_ p: CGPoint) -> CGPoint { CGPoint(x: origin.x + p.x * side, y: origin.y + p.y * side) }
+            path.move(to: point(first))
+            for next in points.dropFirst() { path.addLine(to: point(next)) }
+            if closed { path.closeSubpath() }
+        }
+        switch self {
+        case .inbox:
+            line([.init(x: 3, y: 10), .init(x: 7, y: 4), .init(x: 17, y: 4), .init(x: 21, y: 10), .init(x: 21, y: 20), .init(x: 3, y: 20)], closed: true)
+            line([.init(x: 3, y: 11), .init(x: 8, y: 11), .init(x: 10, y: 15), .init(x: 14, y: 15), .init(x: 16, y: 11), .init(x: 21, y: 11)])
+        case .accounts:
+            line([.init(x: 12, y: 3), .init(x: 21, y: 8), .init(x: 12, y: 13), .init(x: 3, y: 8)], closed: true)
+            line([.init(x: 3, y: 13), .init(x: 12, y: 18), .init(x: 21, y: 13)])
+            line([.init(x: 3, y: 17), .init(x: 12, y: 22), .init(x: 21, y: 17)])
+        case .forecast:
+            line([.init(x: 3, y: 19), .init(x: 21, y: 19)])
+            line([.init(x: 3, y: 14), .init(x: 8, y: 9), .init(x: 12, y: 12), .init(x: 20, y: 4)])
+            line([.init(x: 15, y: 4), .init(x: 20, y: 4), .init(x: 20, y: 9)])
+        case .books:
+            line([.init(x: 12, y: 3), .init(x: 21, y: 8), .init(x: 21, y: 16), .init(x: 12, y: 21), .init(x: 3, y: 16), .init(x: 3, y: 8)], closed: true)
+            line([.init(x: 3, y: 8), .init(x: 12, y: 13), .init(x: 21, y: 8)])
+            line([.init(x: 12, y: 13), .init(x: 12, y: 21)])
+        case .chat:
+            line([.init(x: 12, y: 3), .init(x: 21, y: 8), .init(x: 21, y: 15), .init(x: 12, y: 20), .init(x: 8, y: 22), .init(x: 8, y: 18), .init(x: 3, y: 15), .init(x: 3, y: 8)], closed: true)
+            line([.init(x: 8, y: 12), .init(x: 16, y: 12)])
+        }
+        return path
+    }
+}
+
+struct FinanceLoading: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var label = "正在加载"
+    var compact = false
+
+    var body: some View {
+        HStack(spacing: 11) {
+            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion)) { timeline in
+                Canvas { context, size in
+                    let unit = size.width / 21
+                    let time = timeline.date.timeIntervalSinceReferenceDate
+                    for index in 0..<3 {
+                        let x = CGFloat(index * 6) * unit
+                        let alpha = reduceMotion ? 0.7 : 0.45 + 0.5 * (0.5 + 0.5 * sin(time * 5 - Double(index)))
+                        var shape = Path()
+                        shape.move(to: CGPoint(x: x, y: 11 * unit))
+                        shape.addLine(to: CGPoint(x: x + 4 * unit, y: 2 * unit))
+                        shape.addLine(to: CGPoint(x: x + 8 * unit, y: 2 * unit))
+                        shape.addLine(to: CGPoint(x: x + 4 * unit, y: 11 * unit))
+                        shape.closeSubpath()
+                        context.fill(shape, with: .color(WorkspacePalette.accent.opacity(alpha)))
+                    }
+                }
+            }
+            .frame(width: compact ? 20 : 30, height: compact ? 13 : 19)
+            .accessibilityHidden(true)
+            if !compact { Text(label).font(.callout).foregroundStyle(WorkspacePalette.secondary) }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+    }
+}
 
 // MARK: - 分类视觉映射
 
@@ -81,50 +179,44 @@ enum FinanceFormat {
     }
 }
 
-// MARK: - 氛围背景
+// MARK: - 内容区
 
-/// 为 Liquid Glass 提供折射来源的柔和光斑背景。
-struct AuroraBackground: View {
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        ZStack {
-            (colorScheme == .dark ? Color.black : Color(white: 0.96)).ignoresSafeArea()
-            GeometryReader { proxy in
-                let size = proxy.size
-                blob(color: .blue.opacity(colorScheme == .dark ? 0.28 : 0.30), size: size.width * 0.7)
-                    .position(x: size.width * 0.18, y: size.height * 0.12)
-                blob(color: .purple.opacity(colorScheme == .dark ? 0.24 : 0.26), size: size.width * 0.62)
-                    .position(x: size.width * 0.88, y: size.height * 0.30)
-                blob(color: .teal.opacity(colorScheme == .dark ? 0.20 : 0.24), size: size.width * 0.55)
-                    .position(x: size.width * 0.55, y: size.height * 0.95)
-                blob(color: .orange.opacity(colorScheme == .dark ? 0.16 : 0.18), size: size.width * 0.45)
-                    .position(x: size.width * 0.10, y: size.height * 0.82)
-            }
-        }
-    }
-
-    private func blob(color: Color, size: CGFloat) -> some View {
-        Circle()
-            .fill(color)
-            .frame(width: size, height: size)
-            .blur(radius: size * 0.28)
-    }
-}
-
-// MARK: - 玻璃卡片
-
-/// Liquid Glass 卡片容器：圆角玻璃底 + 内容。
-struct GlassCard<Content: View>: View {
-    var cornerRadius: CGFloat = 22
-    var padding: CGFloat = 18
+struct FinancePanel<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
         content
-            .padding(padding)
+            .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
+            .background(WorkspacePalette.panel, in: .rect(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(WorkspacePalette.border, lineWidth: 1)
+                    .allowsHitTesting(false)
+            }
+    }
+}
+
+struct MonthNavigation: View {
+    @Binding var selection: BudgetMonth
+    let latest: BudgetMonth
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button("上个月", systemImage: "chevron.left") { selection = selection.previous() }
+                .labelStyle(.iconOnly)
+            Text(FinanceFormat.monthLabel(selection))
+                .font(.headline.monospacedDigit())
+                .frame(minWidth: 100)
+            Button("下个月", systemImage: "chevron.right") { selection = selection.next() }
+                .labelStyle(.iconOnly)
+                .disabled(selection >= latest)
+            Spacer()
+            if selection != .current {
+                Button("本月") { selection = .current }
+            }
+        }
+        .buttonStyle(.bordered)
     }
 }
 
@@ -172,8 +264,7 @@ struct CategoryIconView: View {
             .font(.system(size: size * 0.45, weight: .semibold))
             .foregroundStyle(visual.color)
             .frame(width: size, height: size)
-            .background(visual.color.opacity(0.18), in: Circle())
-            .overlay(Circle().strokeBorder(visual.color.opacity(0.25), lineWidth: 0.5))
+            .background(visual.color.opacity(0.10), in: .rect(cornerRadius: 7))
     }
 }
 

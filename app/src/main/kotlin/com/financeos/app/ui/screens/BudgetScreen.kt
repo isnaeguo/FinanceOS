@@ -1,11 +1,6 @@
 package com.financeos.app.ui.screens
-import com.financeos.app.ui.components.glassCardSecondaryText
-import com.financeos.app.ui.components.GlassCard
-import com.financeos.app.ui.components.glassTextFieldColors
+import com.financeos.app.ui.components.FinanceCard
 
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,14 +12,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -32,7 +25,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SnackbarHost
@@ -56,7 +48,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.financeos.app.ui.components.EmptyState
 import com.financeos.app.ui.components.LoadingState
 import com.financeos.app.ui.components.MonthSelector
-import com.financeos.app.ui.components.GlassIconCircle
+import com.financeos.app.ui.components.CategoryBadge
 import com.financeos.app.ui.components.categoryIcon
 import com.financeos.app.ui.viewmodel.BudgetEditorUiState
 import com.financeos.app.ui.viewmodel.BudgetEvent
@@ -89,6 +81,7 @@ internal fun BudgetRoute(viewModel: BudgetViewModel) {
             onEditorCategorySelected = viewModel::onEditorCategorySelected,
             onEditorAmountChanged = viewModel::onEditorAmountChanged,
             onEditorSave = viewModel::saveEditor,
+            onEditorDelete = viewModel::deleteEditorBudget,
             onEditorDismiss = viewModel::dismissEditor,
         )
         SnackbarHost(
@@ -111,6 +104,7 @@ internal fun BudgetScreen(
     onEditorCategorySelected: (String) -> Unit,
     onEditorAmountChanged: (String) -> Unit,
     onEditorSave: () -> Unit,
+    onEditorDelete: () -> Unit,
     onEditorDismiss: () -> Unit,
 ) {
     when {
@@ -159,7 +153,7 @@ internal fun BudgetScreen(
                 }
 
                 item {
-                    Text("月总预算", color = glassCardSecondaryText(), style = MaterialTheme.typography.titleLarge)
+                    Text("月总预算", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.titleLarge)
                 }
 
                 uiState.total?.let { total ->
@@ -186,7 +180,7 @@ internal fun BudgetScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        Text("分类预算", color = glassCardSecondaryText(), style = MaterialTheme.typography.titleLarge)
+                        Text("分类预算", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.titleLarge)
                         TextButton(
                             onClick = onAddCategory,
                             enabled = uiState.canAddCategoryBudget,
@@ -199,15 +193,15 @@ internal fun BudgetScreen(
 
                 if (uiState.categoryBudgets.isEmpty()) {
                     item {
-                        GlassCard(modifier = Modifier.fillMaxWidth()) {
+                        FinanceCard(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier.padding(20.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                Text("尚未设置分类预算", color = glassCardSecondaryText(), style = MaterialTheme.typography.titleMedium)
+                                Text("尚未设置分类预算", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.titleMedium)
                                 Text(
                                     "为餐饮、交通等分类设置独立额度，更容易发现具体支出压力。",
-                                    color = glassCardSecondaryText(),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                                 OutlinedButton(
                                     onClick = onAddCategory,
@@ -226,11 +220,6 @@ internal fun BudgetScreen(
                         CategoryBudgetCard(
                             budget = categoryBudget,
                             onEdit = { onEditCategory(categoryBudget.categoryId) },
-                            modifier = Modifier.animateItem(
-                                fadeInSpec = tween(160),
-                                placementSpec = tween(180, easing = FastOutSlowInEasing),
-                                fadeOutSpec = tween(120),
-                            ),
                         )
                     }
                 }
@@ -244,6 +233,7 @@ internal fun BudgetScreen(
             onCategorySelected = onEditorCategorySelected,
             onAmountChanged = onEditorAmountChanged,
             onSave = onEditorSave,
+            onDelete = onEditorDelete,
             onDismiss = onEditorDismiss,
         )
     }
@@ -255,15 +245,15 @@ private fun MissingTotalBudgetCard(
     amountUsedText: String,
     onSetBudget: () -> Unit,
 ) {
-    GlassCard(modifier = Modifier.fillMaxWidth()) {
+    FinanceCard(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text("尚未设置${periodLabel}总预算", color = glassCardSecondaryText(), style = MaterialTheme.typography.titleMedium)
+            Text("尚未设置${periodLabel}总预算", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.titleMedium)
             Text(
                 text = "${periodLabel}已使用 $amountUsedText。设置预算后即可查看剩余额度和使用比例。",
-                color = glassCardSecondaryText(),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Button(onClick = onSetBudget) {
                 Text("设置月总预算")
@@ -278,7 +268,7 @@ private fun CategoryBudgetCard(
     onEdit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    GlassCard(modifier = modifier.fillMaxWidth()) {
+    FinanceCard(modifier = modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -287,14 +277,13 @@ private fun CategoryBudgetCard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                GlassIconCircle(
-                    tint = MaterialTheme.colorScheme.secondary,
+                CategoryBadge(
                     size = 40.dp,
                 ) {
                     Icon(
                         imageVector = categoryIcon(budget.categoryIconKey),
                         contentDescription = null,
-                        tint = glassCardSecondaryText(),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 Text(
@@ -319,7 +308,7 @@ private fun BudgetUsageCard(
     usage: BudgetUsageUiState,
     onEdit: () -> Unit,
 ) {
-    GlassCard(modifier = Modifier.fillMaxWidth()) {
+    FinanceCard(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -329,7 +318,7 @@ private fun BudgetUsageCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text(title, color = glassCardSecondaryText(), style = MaterialTheme.typography.titleMedium)
+                Text(title, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.titleMedium)
                 TextButton(onClick = onEdit) {
                     Text("修改")
                 }
@@ -366,13 +355,8 @@ private fun BudgetUsageContent(usage: BudgetUsageUiState) {
             )
         }
     }
-    val animatedProgress by animateFloatAsState(
-        targetValue = usage.progress,
-        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
-        label = "budgetProgress",
-    )
     LinearProgressIndicator(
-        progress = { animatedProgress },
+        progress = { usage.progress },
         modifier = Modifier.fillMaxWidth(),
         color = if (usage.isOverBudget) {
             MaterialTheme.colorScheme.error
@@ -388,7 +372,7 @@ private fun BudgetUsageContent(usage: BudgetUsageUiState) {
         Text(
             text = "使用比例 ${usage.usageRatioText}",
             modifier = Modifier.weight(1f),
-            color = glassCardSecondaryText(),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyMedium,
         )
         BudgetStatusLabel(usage)
@@ -421,12 +405,12 @@ private fun BudgetMetric(
 private fun BudgetMetricText(label: String, value: String) {
     Text(
         text = label,
-        color = glassCardSecondaryText(),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         style = MaterialTheme.typography.labelMedium,
     )
     Text(
         text = value,
-        color = glassCardSecondaryText(),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         style = MaterialTheme.typography.titleSmall.copy(fontFeatureSettings = "tnum"),
         maxLines = 1,
     )
@@ -456,7 +440,7 @@ private fun BudgetStatusLabel(usage: BudgetUsageUiState) {
             }
             Text(
                 text = usage.statusText,
-                color = glassCardSecondaryText(),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelMedium,
             )
         }
@@ -469,10 +453,30 @@ private fun BudgetEditorDialog(
     onCategorySelected: (String) -> Unit,
     onAmountChanged: (String) -> Unit,
     onSave: () -> Unit,
+    onDelete: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val amountFocusRequester = remember { FocusRequester() }
     var categoryMenuExpanded by remember(editor.title) { mutableStateOf(false) }
+    var confirmingDelete by remember(editor.title) { mutableStateOf(false) }
+
+    if (confirmingDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmingDelete = false },
+            title = { Text("删除这项预算？") },
+            text = { Text("该月份的此项额度将取消，已有流水会保留。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmingDelete = false
+                    onDelete()
+                }) { Text("删除预算", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmingDelete = false }) { Text("返回") }
+            },
+        )
+        return
+    }
 
     LaunchedEffect(editor.title) {
         amountFocusRequester.requestFocus()
@@ -521,7 +525,6 @@ private fun BudgetEditorDialog(
                     label = { Text("预算金额") },
                     placeholder = { Text("0.00") },
                     prefix = { Text("¥") },
-                    colors = glassTextFieldColors(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     isError = editor.amountError != null,
                     supportingText = editor.amountError?.let { message ->
@@ -530,6 +533,11 @@ private fun BudgetEditorDialog(
                     singleLine = true,
                 )
 
+                if (editor.canDelete) {
+                    TextButton(onClick = { confirmingDelete = true }, enabled = !editor.isSaving) {
+                        Text("删除预算", color = MaterialTheme.colorScheme.error)
+                    }
+                }
                 editor.saveError?.let { message ->
                     Text(
                         text = message,

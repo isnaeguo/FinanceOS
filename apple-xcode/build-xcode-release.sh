@@ -8,7 +8,6 @@ cd "$(dirname "$0")"
 OUT=build
 ARCHIVE="$OUT/FinanceOS.xcarchive"
 APP_OUT="$OUT/FinanceOS.app"
-DMG="$OUT/FinanceOS-1.0.2.dmg"
 
 echo "▶ Archive …"
 xcodebuild -project FinanceOS.xcodeproj \
@@ -21,6 +20,8 @@ xcodebuild -project FinanceOS.xcodeproj \
 echo "▶ 导出 .app …"
 rm -rf "$APP_OUT"
 ditto "$ARCHIVE/Products/Applications/FinanceOS.app" "$APP_OUT"
+VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_OUT/Contents/Info.plist")
+DMG="$OUT/FinanceOS-$VERSION.dmg"
 
 echo "▶ 生成 DMG（拖拽安装）…"
 STAGE="$OUT/dmg-staging"

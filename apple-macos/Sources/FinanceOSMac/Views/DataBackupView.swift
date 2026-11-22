@@ -4,10 +4,13 @@ import AppKit
 
 struct DataBackupView: View {
     @Environment(FinanceStore.self) private var store
+    @Environment(AppRouter.self) private var router
 
     @State private var statusMessage: StatusMessage?
     @State private var pendingRestoreURL: URL?
     @State private var isAddingCategory = false
+    @State private var statementSource: StatementImportSheet.Source?
+    @State private var busy = false
 
     struct StatusMessage: Equatable {
         let text: String
@@ -21,10 +24,11 @@ struct DataBackupView: View {
                 backupCard
                 categoriesCard
                 aboutCard
+                if busy { ProgressView().controlSize(.small) }
             }
+            .disabled(busy)
             .padding(20)
         }
-        .background(AuroraBackground())
         .navigationTitle("数据与备份")
         .alert(
             statusMessage?.text ?? "",
@@ -47,6 +51,16 @@ struct DataBackupView: View {
         }
         .sheet(isPresented: $isAddingCategory) {
             categorySheet
+        }
+        .sheet(item: $statementSource) { source in
+            StatementImportSheet(source: source) { count, duplicates in
+                statusMessage = .init(text: "已导入 \(count) 笔，跳过本机已有的 \(duplicates) 笔。", isError: false)
+            }
+        }
+        .task(id: router.droppedStatement) {
+            guard let url = router.droppedStatement else { return }
+            statementSource = .file(url)
+            router.droppedStatement = nil
         }
     }
 
@@ -79,18 +93,21 @@ struct DataBackupView: View {
     // MARK: - 数据文件
 
     private var dataFilesCard: some View {
-        GlassCard {
+        FinancePanel {
             VStack(alignment: .leading, spacing: 12) {
                 Label("数据文件", systemImage: "doc.text.fill")
                     .font(.headline)
-                Text("JSON 为 FinanceOS 完整格式（流水、分类、预算），CSV 仅包含流水并以最小货币单位保证金额无损。普通导入按 ID 合并，不删除本机已有数据。")
+                Text("JSON 备份包含流水、分类和预算。账单可从 CSV、TSV、XLSX、OFX、QFX、QBO 或剪贴板导入，确认前可预览和调整表头。")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                    GlassActionButton(title: "导出 JSON", symbol: "square.and.arrow.up", action: exportJSON)
-                    GlassActionButton(title: "导入 JSON", symbol: "square.and.arrow.down", action: importJSON)
-                    GlassActionButton(title: "导出 CSV", symbol: "tablecells", action: exportCSV)
-                    GlassActionButton(title: "导入 CSV", symbol: "tablecells.badge.ellipsis", action: importCSV)
+                    FinanceActionButton(title: "导出 JSON", symbol: "square.and.arrow.up", action: exportJSON)
+                    FinanceActionButton(title: "导入 JSON", symbol: "square.and.arrow.down", action: importJSON)
+                    FinanceActionButton(title: "导出 CSV", symbol: "tablecells", action: exportCSV)
+                    FinanceActionButton(title: "导入账单文件…", symbol: "tablecells.badge.ellipsis", action: pickStatement)
+                    FinanceActionButton(title: "粘贴账单…", symbol: "clipboard") {
+                        statementSource = .paste(NSPasteboard.general.string(forType: .string) ?? "")
+                    }
                 }
             }
         }
@@ -99,7 +116,7 @@ struct DataBackupView: View {
     // MARK: - 备份
 
     private var backupCard: some View {
-        GlassCard {
+        FinancePanel {
             VStack(alignment: .leading, spacing: 12) {
                 Label("完整备份", systemImage: "externaldrive.badge.timemachine")
                     .font(.headline)
@@ -107,8 +124,8 @@ struct DataBackupView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 HStack {
-                    GlassActionButton(title: "创建备份文件", symbol: "shippingbox.and.arrow.backward", action: createBackup)
-                    GlassActionButton(title: "从备份恢复…", symbol: "clock.arrow.trianglehead.counterclockwise.rotate.90", action: startRestore)
+                    FinanceActionButton(title: "创建备份文件", symbol: "shippingbox.and.arrow.backward", action: createBackup)
+                    FinanceActionButton(title: "从备份恢复…", symbol: "clock.arrow.trianglehead.counterclockwise.rotate.90", action: startRestore)
                 }
             }
         }
@@ -117,7 +134,7 @@ struct DataBackupView: View {
     // MARK: - 分类管理
 
     private var categoriesCard: some View {
-        GlassCard {
+        FinancePanel {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Label("分类管理", systemImage: "square.grid.2x2")
@@ -128,7 +145,7 @@ struct DataBackupView: View {
                     } label: {
                         Label("新建分类", systemImage: "plus")
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.bordered)
                     .controlSize(.small)
                 }
                 ForEach(store.categories) { category in
@@ -154,7 +171,7 @@ struct DataBackupView: View {
                             } label: {
                                 Image(systemName: "trash")
                             }
-                            .buttonStyle(.glass)
+                            .buttonStyle(.bordered)
                             .controlSize(.small)
                         }
                     }
@@ -167,14 +184,11 @@ struct DataBackupView: View {
     // MARK: - 关于
 
     private var aboutCard: some View {
-        GlassCard {
+        FinancePanel {
             VStack(alignment: .leading, spacing: 8) {
                 Label("关于", systemImage: "info.circle")
                     .font(.headline)
-                Text("FinanceOS for macOS · 版本 0.4.2 · isnaeguo")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                Text("基于 FinanceOS shared 领域模型构建的原生 Liquid Glass 应用。")
+                Text("FinanceOS for macOS · \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "开发版")")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 HStack(spacing: 8) {
@@ -187,7 +201,7 @@ struct DataBackupView: View {
                         let url = store.storeURL().deletingLastPathComponent()
                         NSWorkspace.shared.open(url)
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.bordered)
                     .controlSize(.small)
                 }
                 .font(.callout)
@@ -198,93 +212,83 @@ struct DataBackupView: View {
     // MARK: - 动作
 
     private func exportJSON() {
-        guard let url = makeSavePanel(
-            name: "FinanceOS-数据-\(fileStamp())",
-            contentType: .json
-        ) else { return }
-        do {
-            try store.exportJSON().write(to: url, atomically: true, encoding: .utf8)
-            statusMessage = .init(text: "已导出 JSON 数据到 \(url.lastPathComponent)", isError: false)
-        } catch {
-            statusMessage = .init(text: "导出失败：\(error.localizedDescription)", isError: true)
+        saveJSON(prefix: "FinanceOS-数据")
+    }
+
+    private func createBackup() {
+        saveJSON(prefix: "FinanceOS-备份")
+    }
+
+    private func saveJSON(prefix: String) {
+        guard let url = makeSavePanel(name: "\(prefix)-\(fileStamp())", contentType: .json) else { return }
+        perform {
+            let text = try await store.exportCommittedJSON()
+            try text.write(to: url, atomically: true, encoding: .utf8)
+            return "已保存 \(url.lastPathComponent)。"
         }
     }
 
     private func importJSON() {
         guard let url = makeOpenPanel(contentTypes: [.json]) else { return }
-        do {
-            let content = try String(contentsOf: url, encoding: .utf8)
-            let result = try store.importJSON(content)
-            statusMessage = .init(
-                text: "导入完成：新增流水 \(result.transactionCount) 笔、分类 \(result.categoryCount) 个、预算 \(result.budgetCount) 条。",
-                isError: false
-            )
-        } catch let error as DataTransferError {
-            statusMessage = .init(text: error.message, isError: true)
-        } catch {
-            statusMessage = .init(text: "导入失败：\(error.localizedDescription)", isError: true)
+        perform {
+            let snapshot = try await readBackup(url)
+            let result = try await store.mergeBackup(snapshot)
+            return "已合并备份。已处理流水 \(result.transactionCount) 笔、分类 \(result.categoryCount) 个、预算 \(result.budgetCount) 条。"
         }
     }
 
     private func exportCSV() {
-        guard let url = makeSavePanel(
-            name: "FinanceOS-流水-\(fileStamp())",
-            contentType: .commaSeparatedText
-        ) else { return }
-        do {
-            try store.exportCSV().write(to: url, atomically: true, encoding: .utf8)
-            statusMessage = .init(text: "已导出流水 CSV 到 \(url.lastPathComponent)", isError: false)
-        } catch {
-            statusMessage = .init(text: "导出失败：\(error.localizedDescription)", isError: true)
+        guard let url = makeSavePanel(name: "FinanceOS-流水-\(fileStamp())", contentType: .commaSeparatedText) else { return }
+        perform {
+            try await store.exportCommittedCSV().write(to: url, atomically: true, encoding: .utf8)
+            return "已导出 \(url.lastPathComponent)。"
         }
     }
 
-    private func importCSV() {
-        guard let url = makeOpenPanel(contentTypes: [.commaSeparatedText, .plainText, .spreadsheet, .data]) else { return }
-        do {
-            let data = try Data(contentsOf: url)
-            let result = try store.importSpreadsheetFile(data)
-            statusMessage = .init(
-                text: "导入完成：新增流水 \(result.transactionCount) 笔。",
-                isError: false
-            )
-        } catch let error as DataTransferError {
-            statusMessage = .init(text: error.message, isError: true)
-        } catch {
-            statusMessage = .init(text: "导入失败：\(error.localizedDescription)", isError: true)
-        }
-    }
-
-    private func createBackup() {
-        guard let url = makeSavePanel(
-            name: "FinanceOS-备份-\(fileStamp())",
-            contentType: .json
-        ) else { return }
-        do {
-            try store.exportJSON().write(to: url, atomically: true, encoding: .utf8)
-            statusMessage = .init(text: "备份已创建：\(url.lastPathComponent)", isError: false)
-        } catch {
-            statusMessage = .init(text: "备份失败：\(error.localizedDescription)", isError: true)
-        }
+    private func pickStatement() {
+        let extensions = ["csv", "tsv", "txt", "xlsx", "ofx", "qfx", "qbo"]
+        let types = extensions.compactMap { UTType(filenameExtension: $0) }
+        guard let url = makeOpenPanel(contentTypes: types) else { return }
+        statementSource = .file(url)
     }
 
     private func startRestore() {
-        guard let url = makeOpenPanel(contentTypes: [.json]) else { return }
-        pendingRestoreURL = url
+        pendingRestoreURL = makeOpenPanel(contentTypes: [.json])
     }
 
     private func performRestore(from url: URL) {
-        do {
-            let content = try String(contentsOf: url, encoding: .utf8)
-            let result = try store.restoreFromBackup(content)
-            statusMessage = .init(
-                text: "恢复完成：本机数据已替换为 \(result.transactionCount) 笔流水、\(result.categoryCount) 个分类、\(result.budgetCount) 条预算。",
-                isError: false
-            )
-        } catch let error as DataTransferError {
-            statusMessage = .init(text: error.message, isError: true)
-        } catch {
-            statusMessage = .init(text: "恢复失败：\(error.localizedDescription)", isError: true)
+        perform {
+            let snapshot = try await readBackup(url)
+            let result = try await store.replaceBackup(snapshot)
+            return "已恢复流水 \(result.transactionCount) 笔、分类 \(result.categoryCount) 个、预算 \(result.budgetCount) 条。"
+        }
+    }
+
+    private func readBackup(_ url: URL) async throws -> FinanceDataSnapshot {
+        try await Task.detached(priority: .userInitiated) {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            let handle = try FileHandle(forReadingFrom: url)
+            defer { try? handle.close() }
+            let maximum = 64 * 1024 * 1024
+            let data = try handle.read(upToCount: maximum + 1) ?? Data()
+            guard data.count <= maximum, let content = String(data: data, encoding: .utf8) else {
+                throw DataTransferError(message: "备份须为 UTF-8 JSON 文件，且不超过 64 MB。")
+            }
+            return try FinanceDataJsonCodec.decode(content)
+        }.value
+    }
+
+    private func perform(_ operation: @escaping @MainActor () async throws -> String) {
+        guard !busy else { return }
+        busy = true
+        Task {
+            defer { busy = false }
+            do {
+                statusMessage = .init(text: try await operation(), isError: false)
+            } catch {
+                statusMessage = .init(text: error.localizedDescription, isError: true)
+            }
         }
     }
 
@@ -314,9 +318,9 @@ struct DataBackupView: View {
     }
 }
 
-// MARK: - 通用玻璃按钮
+// MARK: - 数据操作按钮
 
-struct GlassActionButton: View {
+struct FinanceActionButton: View {
     let title: String
     let symbol: String
     let action: () -> Void
@@ -328,7 +332,7 @@ struct GlassActionButton: View {
                 .padding(.vertical, 8)
                 .contentShape(.rect(cornerRadius: 14))
         }
-        .buttonStyle(.glass)
+        .buttonStyle(.bordered)
     }
 }
 
@@ -391,7 +395,7 @@ struct AddCategorySheet: View {
                 Button("取消") { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Button("创建") { save() }
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
                     .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
             }

@@ -99,5 +99,7 @@ class LanSyncCryptoTest {
         assertTrue(LanSyncPolicy.isTimestampFresh(now - 5 * 60 * 1000L, now))
         assertTrue(!LanSyncPolicy.isTimestampFresh(now - 5 * 60 * 1000L - 1, now))
         assertTrue(!LanSyncPolicy.isTimestampFresh(now + 6 * 60 * 1000L, now))
+        assertTrue(!LanSyncPolicy.isTimestampFresh(Long.MIN_VALUE, 0))
+        assertTrue(!LanSyncPolicy.isTimestampFresh(-1L, Long.MAX_VALUE))
     }
 }

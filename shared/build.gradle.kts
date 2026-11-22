@@ -79,3 +79,12 @@ tasks.matching {
 }.configureEach {
     dependsOn("kspAndroidHostTest")
 }
+
+val workspaceCliCompilation = kotlin.targets.getByName("jvm").compilations.getByName("main")
+tasks.register<JavaExec>("workspaceCli") {
+    description = "Inspect and exchange FinanceOS files locally."
+    group = "application"
+    dependsOn(workspaceCliCompilation.compileTaskProvider)
+    classpath(workspaceCliCompilation.output.allOutputs, configurations.named("jvmRuntimeClasspath"))
+    mainClass.set("com.financeos.shared.workspace.WorkspaceCliKt")
+}

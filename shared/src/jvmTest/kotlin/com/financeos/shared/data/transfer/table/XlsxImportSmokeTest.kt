@@ -5,6 +5,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.time.Instant
 
 /**
  * XLSX 导入冒烟：用标准 ZIP 生成器构造最小工作簿（deflate 条目覆盖纯 Kotlin inflate 路径），
@@ -20,6 +21,37 @@ class XlsxImportSmokeTest {
         assertEquals("bill-7211b6506f333245", transaction.id)
         assertEquals(2_350L, transaction.amount)
         assertEquals("system-other", transaction.categoryId)
+    }
+
+    @Test
+    fun parsesInlineStringsAndFirstWorkbookRelationship() {
+        val output = ByteArrayOutputStream()
+        ZipOutputStream(output).use { zip ->
+            zip.entry("xl/workbook.xml", """<workbook><sheets><sheet name="First" r:id="link" sheetId="1"/></sheets></workbook>""")
+            zip.entry(
+                "xl/_rels/workbook.xml.rels",
+                """<Relationships><Relationship Target="worksheets/actual.xml" Id="link"/></Relationships>""",
+            )
+            zip.entry(
+                "xl/worksheets/actual.xml",
+                """
+                <worksheet><sheetData>
+                <row r="1"><c t="inlineStr" r="A1"><is><t>日期</t></is></c><c t="inlineStr" r="B1"><is><t>金额</t></is></c><c r="C1" t="inlineStr"><is><t>备注</t></is></c></row>
+                <row r="5"><c r="A5" t="inlineStr"><is><t>2026-08-10T08:30:00Z</t></is></c><c r="B5"><v>-3.20</v></c><c r="C5" t="inlineStr"><is><r><t>A</t></r><r><t> &amp; B &#x1f680;</t></r></is></c></row>
+                </sheetData></worksheet>
+                """.trimIndent(),
+            )
+        }
+        val transaction = TableTransactionImporter.decode(output.toByteArray()).transactions.single()
+        assertEquals(320L, transaction.amount)
+        assertEquals("A & B 🚀", transaction.note)
+        assertEquals(Instant.parse("2026-08-10T08:30:00Z"), transaction.dateTime)
+    }
+
+    private fun ZipOutputStream.entry(path: String, content: String) {
+        putNextEntry(ZipEntry(path))
+        write(content.toByteArray())
+        closeEntry()
     }
 
     private fun buildMinimalXlsx(): ByteArray {

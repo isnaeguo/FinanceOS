@@ -42,6 +42,18 @@ class TransactionFilterTest {
         assertEquals(listOf("none"), result.map { it.id })
     }
 
+    @Test
+    fun searchMatchesDifferentFieldsAndIgnoresCase() {
+        val items = listOf(
+            item("food-cash", "food", "Cash", "周末午饭", TransactionType.EXPENSE),
+            item("food-bank", "food", "bank", "周末午饭", TransactionType.EXPENSE),
+        )
+        assertEquals(
+            listOf("food-cash"),
+            filterTransactionItems(items, "cash food 午饭", null, null, AccountFilter.All).map { it.id },
+        )
+    }
+
     private fun item(
         id: String,
         categoryId: String,

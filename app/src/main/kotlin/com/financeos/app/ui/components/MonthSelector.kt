@@ -39,12 +39,12 @@ internal fun MonthSelector(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
                 contentDescription = "上个月",
-                tint = glassCardSecondaryText(),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Text(
             text = monthLabel,
-            color = glassCardSecondaryText(),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.titleMedium,
         )
         IconButton(
@@ -54,7 +54,7 @@ internal fun MonthSelector(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = "下个月",
-                tint = glassCardSecondaryText(),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

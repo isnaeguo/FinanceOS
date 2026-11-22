@@ -16,233 +16,79 @@ struct DashboardView: View {
     }
 
     var body: some View {
-        let period = selectedMonth.period()
+        let period = selectedMonth.period(calendar: store.calendar)
         let summary = store.monthlySummary(in: period)
-        let status = store.budgetStatus(in: period)
+        let status = store.budgetStatus(in: period, summary: summary)
+        let monthEnd = store.calendar.date(byAdding: .day, value: -1, to: period.endExclusive) ?? Date()
+        let trendDay = min(Date(), monthEnd)
 
         ScrollView {
-            VStack(spacing: 16) {
-                monthHeader
+            LazyVStack(spacing: 14) {
+                MonthNavigation(selection: $selectedMonth, latest: .current)
                 statRow(summary)
-                budgetRow(summary: summary, status: status)
-                monthlyTrendCard
-                dailyTrendCard
-                if !summary.categoryRanking.isEmpty {
-                    rankingCard(summary)
-                }
-                recentCard
-            }
-            .padding(20)
-        }
-        .background(AuroraBackground())
-        .navigationTitle("总览")
-        .onAppear {
-            let current = BudgetMonth.current
-            if selectedMonth > current { selectedMonth = current }
-        }
-    }
+                budgetRow(status: status)
 
-    // MARK: - 月份导航
-
-    private var monthHeader: some View {
-        let current = BudgetMonth.current
-        return HStack {
-            GlassEffectContainer(spacing: 10) {
-                HStack(spacing: 10) {
-                    Button {
-                        selectedMonth = selectedMonth.previous()
-                    } label: {
-                        Image(systemName: "chevron.left")
-                    }
-                    .buttonStyle(.glass)
-                    .disabled(false)
-
-                    Text(FinanceFormat.monthLabel(selectedMonth))
-                        .font(.title3.weight(.semibold))
-                        .monospacedDigit()
-                        .frame(minWidth: 110)
-
-                    Button {
-                        selectedMonth = selectedMonth.next()
-                    } label: {
-                        Image(systemName: "chevron.right")
-                    }
-                    .buttonStyle(.glass)
-                    .disabled(selectedMonth >= current)
-                }
-            }
-
-            Spacer()
-
-            if selectedMonth != current {
-                Button("回到本月") {
-                    selectedMonth = current
-                }
-                .buttonStyle(.glass)
-            }
-        }
-    }
-
-    // MARK: - 收支概览
-
-    private func statRow(_ summary: MonthlySummary) -> some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
-            GlassCard {
-                StatCard(
-                    title: "收入",
-                    value: formatMoney(summary.totalIncome),
-                    symbol: "arrow.down.left",
-                    tint: .mint
-                )
-            }
-            GlassCard {
-                StatCard(
-                    title: "支出",
-                    value: formatMoney(summary.totalExpense),
-                    symbol: "arrow.up.right",
-                    tint: .red
-                )
-            }
-            GlassCard {
-                StatCard(
-                    title: "结余",
-                    value: formatMoney(summary.netChange),
-                    symbol: "equal.circle.fill",
-                    tint: summary.netChange >= 0 ? .green : .orange
-                )
-            }
-        }
-    }
-
-    // MARK: - 预算
-
-    private func budgetRow(summary: MonthlySummary, status: MonthlyBudgetStatus) -> some View {
-        let daily = store.dailyAvailableBudget()
-        let isCurrentMonth = selectedMonth == BudgetMonth.current
-        let total = status.total
-
-        return LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
-            GlassCard {
-                if isCurrentMonth, let daily {
-                    DailyBudgetContent(daily: daily)
-                } else if total.hasBudget {
-                    TotalBudgetContent(usage: total)
-                } else {
-                    EmptyBudgetHint()
-                }
-            }
-            GlassCard {
-                if total.hasBudget {
-                    TotalBudgetContent(usage: total)
-                } else {
-                    EmptyBudgetHint()
-                }
-            }
-        }
-    }
-
-    // MARK: - 月度趋势
-
-    private var monthlyTrendCard: some View {
-        let points = store.monthlyExpenseTrend(anchorMonth: selectedMonth, count: 6)
-        return GlassCard {
-            VStack(alignment: .leading, spacing: 14) {
-                Label("近 6 个月支出趋势", systemImage: "chart.bar.fill")
-                    .font(.headline)
-                if points.contains(where: { $0.amount > 0 }) {
-                    Chart(points) { point in
-                        BarMark(
-                            x: .value("月份", FinanceFormat.monthTrendLabel(point.key)),
-                            y: .value("支出", FinanceFormat.chartAmount(point.amount))
-                        )
-                        .foregroundStyle(
-                            point.key == "\(selectedMonth.year)-\(String(format: "%02d", selectedMonth.month))"
-                                ? AnyShapeStyle(.teal.gradient)
-                                : AnyShapeStyle(.blue.opacity(0.75).gradient)
-                        )
-                        .cornerRadius(5)
-                    }
-                    .chartYAxis {
-                        AxisMarks(position: .leading) { value in
-                            AxisGridLine()
-                            AxisValueLabel {
-                                if let amount = value.as(Double.self) {
-                                    Text(abbreviateAmount(amount))
-                                }
-                            }
-                        }
-                    }
-                    .frame(height: 170)
-                } else {
-                    EmptyStateView(symbol: "chart.bar", title: "暂无支出数据", message: "记录几笔支出后即可看到趋势")
-                }
-            }
-        }
-    }
-
-    // MARK: - 按日趋势
-
-    private var dailyTrendCard: some View {
-        let data = store.dailyExpenseTrendData(days: spendingRange.rawValue)
-        let hasData = data.contains { $0.amount > 0 }
-        return GlassCard {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    Label("每日消费趋势", systemImage: "chart.xyaxis.line")
-                        .font(.headline)
-                    Spacer()
+                ExpenseTrendPanel(
+                    title: "近 6 个月净支出",
+                    periods: SummaryCalculations.monthTrendPeriods(
+                        anchorMonth: selectedMonth, count: 6, calendar: store.calendar
+                    ),
+                    style: .month
+                ) { EmptyView() }
+                ExpenseTrendPanel(
+                    title: "每日净支出",
+                    periods: SummaryCalculations.dailyTrendPeriods(
+                        anchorDay: trendDay, days: spendingRange.rawValue, calendar: store.calendar
+                    ),
+                    style: .day
+                ) {
                     Picker("范围", selection: $spendingRange) {
                         ForEach(SpendingRange.allCases) { range in
                             Text(range.label).tag(range)
                         }
                     }
                     .pickerStyle(.segmented)
-                    .frame(width: 190)
+                    .labelsHidden()
+                    .frame(width: 170)
                 }
-                if hasData {
-                    Chart(data) { datum in
-                        AreaMark(
-                            x: .value("日期", datum.date),
-                            y: .value("支出", FinanceFormat.chartAmount(datum.amount))
-                        )
-                        .interpolationMethod(.catmullRom)
-                        .foregroundStyle(.linearGradient(colors: [.teal.opacity(0.35), .teal.opacity(0.02)], startPoint: .top, endPoint: .bottom))
+                if !summary.expensesByCategory.isEmpty { rankingCard(summary) }
+                recentCard
+            }
+            .frame(maxWidth: 1100)
+            .padding(20)
+            .frame(maxWidth: .infinity)
+        }
+        .navigationTitle("总览")
+    }
 
-                        LineMark(
-                            x: .value("日期", datum.date),
-                            y: .value("支出", FinanceFormat.chartAmount(datum.amount))
-                        )
-                        .interpolationMethod(.catmullRom)
-                        .foregroundStyle(.teal)
-                        .lineStyle(StrokeStyle(lineWidth: 2.2, lineCap: .round))
+    private func statRow(_ summary: MonthlySummary) -> some View {
+        FinancePanel {
+            HStack(spacing: 18) {
+                StatCard(title: "收入", value: formatMoney(summary.totalIncome), symbol: "arrow.down.left", tint: .green)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Divider()
+                StatCard(title: "支出", value: formatMoney(summary.totalExpense), symbol: "arrow.up.right", tint: .secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Divider()
+                StatCard(
+                    title: "结余", value: formatMoney(summary.netChange), symbol: "equal",
+                    tint: summary.netChange >= 0 ? .accentColor : .red
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+        }
+    }
 
-                        PointMark(
-                            x: .value("日期", datum.date),
-                            y: .value("支出", FinanceFormat.chartAmount(datum.amount))
-                        )
-                        .symbolSize(22)
-                        .foregroundStyle(.teal)
-                    }
-                    .chartXAxis {
-                        AxisMarks(values: .automatic) { _ in
-                            AxisGridLine()
-                            AxisValueLabel(format: .dateTime.month(.twoDigits).day(.twoDigits), centered: false)
-                        }
-                    }
-                    .chartYAxis {
-                        AxisMarks(position: .leading) { value in
-                            AxisGridLine()
-                            AxisValueLabel {
-                                if let amount = value.as(Double.self) {
-                                    Text(abbreviateAmount(amount))
-                                }
-                            }
-                        }
-                    }
-                    .frame(height: 160)
-                } else {
-                    EmptyStateView(symbol: "chart.xyaxis.line", title: "暂无支出数据")
-                }
+    private func budgetRow(status: MonthlyBudgetStatus) -> some View {
+        let daily = selectedMonth == .current ? store.dailyAvailableBudget(calendar: store.calendar) : nil
+        return HStack(alignment: .top, spacing: 14) {
+            if let daily {
+                FinancePanel { DailyBudgetContent(daily: daily) }
+            }
+            FinancePanel {
+                if status.total.hasBudget { TotalBudgetContent(usage: status.total) }
+                else { EmptyBudgetHint() }
             }
         }
     }
@@ -252,7 +98,7 @@ struct DashboardView: View {
     private func rankingCard(_ summary: MonthlySummary) -> some View {
         let ranking = summary.categoryRanking
         let maxAmount = ranking.first?.amount ?? 0
-        return GlassCard {
+        return FinancePanel {
             VStack(alignment: .leading, spacing: 14) {
                 Label("分类消费排行", systemImage: "list.number")
                     .font(.headline)
@@ -284,7 +130,7 @@ struct DashboardView: View {
 
     private var recentCard: some View {
         let recent = store.recentTransactions(limit: 8)
-        return GlassCard {
+        return FinancePanel {
             VStack(alignment: .leading, spacing: 8) {
                 Label("最近流水", systemImage: "clock")
                     .font(.headline)
@@ -302,19 +148,97 @@ struct DashboardView: View {
         }
     }
 
-    private func abbreviateAmount(_ major: Double) -> String {
-        let formatter = abbreviateFormatter
-        return formatter.string(from: NSNumber(value: major)) ?? String(major)
+}
+
+private struct ExpenseTrendPanel<Controls: View>: View {
+    enum Style { case month, day }
+
+    private struct Request: Equatable {
+        let periods: [ExpenseTrendPeriod]
+        let revision: UInt64
     }
 
-    private let abbreviateFormatter: NumberFormatter = {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.maximumFractionDigits = 0
-        formatter.currencySymbol = "¥"
-        formatter.positivePrefix = "¥"
-        return formatter
-    }()
+    @Environment(FinanceStore.self) private var store
+    let title: String
+    let periods: [ExpenseTrendPeriod]
+    let style: Style
+    @ViewBuilder var controls: Controls
+    @State private var loaded: Request?
+    @State private var points: [ExpenseTrendPoint] = []
+
+    var body: some View {
+        let request = Request(periods: periods, revision: store.ledgerRevision)
+        FinancePanel {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text(title).font(.headline)
+                    Spacer(minLength: 10)
+                    controls
+                }
+                Group {
+                    if loaded != request {
+                        FinanceLoading(compact: true)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if points.contains(where: { $0.amount != 0 }) {
+                        chart
+                    } else {
+                        Text("暂无净支出变化")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                }
+                .frame(height: 150)
+            }
+        }
+        .task(id: request) {
+            let result = await store.loadExpenseTrend(periods: request.periods)
+            guard !Task.isCancelled else { return }
+            points = result
+            loaded = request
+        }
+    }
+
+    private var chart: some View {
+        let step = max(1, (points.count + 5) / 6)
+        let ticks = points.enumerated().compactMap { index, point in
+            index.isMultiple(of: step) ? label(point.key) : nil
+        }
+        return Chart(points) { point in
+            switch style {
+            case .month:
+                BarMark(
+                    x: .value("月份", label(point.key)),
+                    y: .value("净支出", FinanceFormat.chartAmount(point.amount))
+                )
+                .foregroundStyle(Color.accentColor.opacity(point.id == points.last?.id ? 1 : 0.45))
+                .cornerRadius(3)
+            case .day:
+                LineMark(
+                    x: .value("日期", label(point.key)),
+                    y: .value("净支出", FinanceFormat.chartAmount(point.amount))
+                )
+                .foregroundStyle(Color.accentColor)
+                .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+            }
+        }
+        .chartXAxis { AxisMarks(values: ticks) { _ in AxisValueLabel() } }
+        .chartYAxis {
+            AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { value in
+                AxisGridLine()
+                AxisValueLabel {
+                    if let amount = value.as(Double.self) {
+                        Text(amount.formatted(.number.notation(.compactName)))
+                    }
+                }
+            }
+        }
+        .accessibilityLabel(title)
+    }
+
+    private func label(_ key: String) -> String {
+        style == .month ? FinanceFormat.monthTrendLabel(key) : FinanceFormat.dayTrendLabel(key)
+    }
 }
 
 // MARK: - 每日可用预算内容
@@ -327,7 +251,6 @@ private struct DailyBudgetContent: View {
             Label("今日可用预算", systemImage: "sun.max.fill")
                 .font(.callout)
                 .foregroundStyle(.secondary)
-                .symbolRenderingMode(.multicolor)
             Text(formatMoney(daily.dailyAmount))
                 .font(.system(size: 30, weight: .bold, design: .rounded))
                 .monospacedDigit()
@@ -399,7 +322,7 @@ private struct EmptyBudgetHint: View {
             Button("去设置预算") {
                 router.section = .budgets
             }
-            .buttonStyle(.glass)
+            .buttonStyle(.bordered)
             .controlSize(.small)
         }
     }

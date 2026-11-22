@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.financeos.shared.domain.calculation.BudgetUsage
 import com.financeos.shared.domain.model.Budget
+import com.financeos.shared.domain.model.BudgetMonth
 import com.financeos.shared.domain.model.Category
 import com.financeos.shared.domain.model.CategoryType
 import com.financeos.shared.domain.repository.BudgetRepository
@@ -69,6 +70,7 @@ data class BudgetEditorUiState(
     val amountError: String? = null,
     val saveError: String? = null,
     val isSaving: Boolean = false,
+    val canDelete: Boolean = false,
 ) {
     val canSave: Boolean
         get() = parseAmountInMinorUnits(amountInput, allowZero = true) != null &&
@@ -102,6 +104,7 @@ class BudgetViewModel(
     private val categoryRepository: CategoryRepository,
     private val zoneId: ZoneId = ZoneId.systemDefault(),
     currentMonth: YearMonth? = null,
+    private val deleteBudget: suspend (BudgetMonth, String?) -> Boolean = { _, _ -> false },
 ) : ViewModel() {
     private val baseMonth = currentMonth ?: YearMonth.now(zoneId)
     /** 未来最多允许提前创建“当前月+1”的预算，不提前管理更远的月份。 */
@@ -218,7 +221,8 @@ class BudgetViewModel(
                     isNewCategoryBudget = false,
                     selectedCategoryId = null,
                     categoryOptions = emptyList(),
-                    amountInput = total.amountLimitMinor?.toAmountInput() ?: "",
+                    amountInput = total.amountLimitMinor?.let(::amountInputFromMinorUnits) ?: "",
+                    canDelete = total.hasBudget,
                 ),
             )
         }
@@ -257,7 +261,8 @@ class BudgetViewModel(
                     isNewCategoryBudget = false,
                     selectedCategoryId = categoryId,
                     categoryOptions = emptyList(),
-                    amountInput = categoryBudget.usage.amountLimitMinor?.toAmountInput() ?: "",
+                    amountInput = categoryBudget.usage.amountLimitMinor?.let(::amountInputFromMinorUnits) ?: "",
+                    canDelete = true,
                 ),
             )
         }
@@ -343,6 +348,25 @@ class BudgetViewModel(
         }
     }
 
+    fun deleteEditorBudget() {
+        val editor = _uiState.value.editor ?: return
+        if (editor.isSaving || !editor.canDelete) return
+        val month = selectedMonth.toMonthPeriod(zoneId).month
+        updateEditor { it.copy(isSaving = true, saveError = null) }
+        viewModelScope.launch {
+            try {
+                val deleted = deleteBudget(month, editor.selectedCategoryId)
+                _uiState.update { it.copy(editor = null) }
+                val message = if (deleted) "预算已删除" else "该预算已不存在"
+                _events.send(BudgetEvent.ShowMessage(message))
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                updateEditor { it.copy(isSaving = false, saveError = "删除失败，请稍后重试") }
+            }
+        }
+    }
+
     private fun updateEditor(transform: (BudgetEditorUiState) -> BudgetEditorUiState) {
         _uiState.update { current ->
             val editor = current.editor ?: return@update current
@@ -388,9 +412,6 @@ class BudgetViewModel(
             isOverBudget = isOverBudget,
         )
     }
-
-    private fun Long.toAmountInput(): String =
-        "${this / 100}.${(this % 100).toString().padStart(2, '0')}"
 
     private companion object {
         val monthFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern(

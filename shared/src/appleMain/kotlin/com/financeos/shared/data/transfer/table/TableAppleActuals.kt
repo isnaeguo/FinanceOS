@@ -8,6 +8,7 @@ import platform.CoreFoundation.CFStringGetMaximumSizeForEncoding
 import platform.CoreFoundation.CFRelease
 import platform.CoreFoundation.kCFStringEncodingUTF8
 import platform.Foundation.NSCalendar
+import platform.Foundation.NSCalendarIdentifierGregorian
 import platform.Foundation.NSDateComponents
 import platform.Foundation.NSTimeZone
 import platform.Foundation.systemTimeZone
@@ -69,7 +70,7 @@ actual fun localDateTimeToEpochMillis(
     minute: Int,
     second: Int,
 ): Long {
-    val calendar = NSCalendar.currentCalendar()
+    val calendar = NSCalendar(calendarIdentifier = NSCalendarIdentifierGregorian)
     calendar.timeZone = NSTimeZone.systemTimeZone
     val components = NSDateComponents()
     components.year = year.toLong()

@@ -7,14 +7,16 @@ import com.financeos.shared.lansync.LanPairing
 import com.financeos.shared.lansync.LanSyncCrypto
 import com.financeos.shared.lansync.LanSyncException
 import com.financeos.shared.lansync.LanSyncPayload
+import com.financeos.shared.lansync.LanSyncPolicy
 import com.financeos.shared.lansync.LanSyncSpec
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.net.ConnectException
 import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
-import java.net.URL
+import java.net.URI
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -22,6 +24,7 @@ import org.json.JSONObject
 
 private const val CONNECT_TIMEOUT_MILLIS = 10_000
 private const val READ_TIMEOUT_MILLIS = 20_000
+private const val MAX_RESPONSE_ERROR_BYTES = 4096
 private const val SNAPSHOT_PATH = "/api/snapshot"
 
 /** 局域网共享操作失败时携带中文提示的可展示异常。 */
@@ -42,15 +45,17 @@ object LanShareClient {
             try {
                 val exchange = encryptedExchange(host, port, pairingCode)
                 val connection = exchange.connection
-                connection.requestMethod = "GET"
-                addCryptoHeaders(connection, exchange)
-                val code = connection.responseCode
-                if (code == HttpURLConnection.HTTP_OK) {
-                    val envelope = readFullyBytes(connection.inputStream)
-                    val payload = exchange.decryptResponse(envelope)
-                    payload.body
-                } else {
-                    throw IOException(httpErrorMessage(connection, code, "拉取对方快照失败"))
+                try {
+                    connection.requestMethod = "GET"
+                    addCryptoHeaders(connection, exchange)
+                    val code = connection.responseCode
+                    if (code != HttpURLConnection.HTTP_OK) {
+                        throw IOException(httpErrorMessage(connection, code, "拉取对方快照失败"))
+                    }
+                    val envelope = readBounded(connection.inputStream, LanSyncSpec.MAX_BODY_BYTES)
+                    exchange.decryptResponse(envelope, LanSyncPayload.KIND_SNAPSHOT_RESPONSE).body
+                } finally {
+                    connection.disconnect()
                 }
             } catch (error: CancellationException) {
                 throw error
@@ -65,27 +70,29 @@ object LanShareClient {
             try {
                 val exchange = encryptedExchange(host, port, pairingCode)
                 val connection = exchange.connection
-                connection.requestMethod = "POST"
-                connection.doOutput = true
-                val payload = LanSyncPayload(
-                    ts = System.currentTimeMillis(),
-                    deviceId = DeviceIdentity.loadOrCreate(),
-                    kind = LanSyncPayload.KIND_SNAPSHOT_V2,
-                    body = json,
-                )
-                val envelope = exchange.encrypt(payload.encode())
-                addCryptoHeaders(connection, exchange)
-                connection.setFixedLengthStreamingMode(envelope.size)
                 try {
+                    connection.requestMethod = "POST"
+                    connection.doOutput = true
+                    val payload = LanSyncPayload(
+                        ts = System.currentTimeMillis(),
+                        deviceId = DeviceIdentity.loadOrCreate(),
+                        kind = LanSyncPayload.KIND_SNAPSHOT_V2,
+                        body = json,
+                    )
+                    val envelope = exchange.encrypt(payload.encode())
+                    if (envelope.size > LanSyncSpec.MAX_BODY_BYTES) {
+                        throw LanShareClientException("同步快照超过大小限制，请改用本地备份文件。")
+                    }
+                    addCryptoHeaders(connection, exchange)
+                    connection.setFixedLengthStreamingMode(envelope.size)
                     connection.outputStream.use { output -> output.write(envelope) }
                     val code = connection.responseCode
-                    if (code == HttpURLConnection.HTTP_OK) {
-                        val responseEnvelope = readFullyBytes(connection.inputStream)
-                        val responsePayload = exchange.decryptResponse(responseEnvelope)
-                        parseImportedResponse(responsePayload.body)
-                    } else {
+                    if (code != HttpURLConnection.HTTP_OK) {
                         throw IOException(httpErrorMessage(connection, code, "推送本机快照失败"))
                     }
+                    val responseEnvelope = readBounded(connection.inputStream, LanSyncSpec.MAX_BODY_BYTES)
+                    val responsePayload = exchange.decryptResponse(responseEnvelope, LanSyncPayload.KIND_IMPORT_RESULT)
+                    parseImportedResponse(responsePayload.body)
                 } finally {
                     connection.disconnect()
                 }
@@ -110,9 +117,14 @@ object LanShareClient {
         fun encrypt(plaintext: ByteArray): ByteArray =
             LanSyncCrypto.encrypt(key, iv, plaintext, LanSyncSpec.PROTO.toString().toByteArray())
 
-        fun decryptResponse(envelope: ByteArray): LanSyncPayload {
+        fun decryptResponse(envelope: ByteArray, expectedKind: String): LanSyncPayload {
             val plain = LanSyncCrypto.decrypt(key, envelope, LanSyncSpec.PROTO.toString().toByteArray())
-            return LanSyncPayload.decode(plain)
+            val response = LanSyncPayload.decode(plain)
+            if (response.kind != expectedKind) throw LanShareClientException("对方返回了错误的响应类型。")
+            if (!LanSyncPolicy.isTimestampFresh(response.ts, System.currentTimeMillis())) {
+                throw LanShareClientException("响应已过期，请检查两端系统时间。")
+            }
+            return response
         }
 
         fun headers(): Map<String, String> = mapOf(
@@ -128,8 +140,13 @@ object LanShareClient {
         if (!LanPairing.isValid(code)) {
             throw LanShareClientException("配对码格式不正确，请输入 10 位大写字母与数字（不含 0/O/1/I）。")
         }
-        val url = URL("http://$host:$port$SNAPSHOT_PATH")
+        val url = try {
+            URI("http", null, host, port, SNAPSHOT_PATH, null, null).toURL()
+        } catch (_: java.net.URISyntaxException) {
+            throw LanShareClientException("请输入有效的主机名或 IP 地址。")
+        }
         val connection = url.openConnection() as HttpURLConnection
+        connection.instanceFollowRedirects = false
         connection.connectTimeout = CONNECT_TIMEOUT_MILLIS
         connection.readTimeout = READ_TIMEOUT_MILLIS
         return try {
@@ -147,8 +164,17 @@ object LanShareClient {
         connection.setRequestProperty("Content-Type", "application/octet-stream")
     }
 
-    private fun readFullyBytes(stream: InputStream): ByteArray =
-        stream.use { input -> input.readBytes() }
+    private fun readBounded(stream: InputStream, maxBytes: Int): ByteArray = stream.use { input ->
+        val result = ByteArrayOutputStream()
+        val buffer = ByteArray(8_192)
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            if (count > maxBytes - result.size()) throw LanShareClientException("同步响应超过大小限制。")
+            result.write(buffer, 0, count)
+        }
+        result.toByteArray()
+    }
 
     private fun parseImportedResponse(body: String): FinanceDataImportResult {
         val imported = JSONObject(body).getJSONObject("imported")
@@ -161,7 +187,7 @@ object LanShareClient {
 
     private fun httpErrorMessage(connection: HttpURLConnection, code: Int, action: String): String {
         val body = try {
-            connection.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+            connection.errorStream?.let { readBounded(it, MAX_RESPONSE_ERROR_BYTES).decodeToString() }
         } catch (error: Exception) {
             null
         }

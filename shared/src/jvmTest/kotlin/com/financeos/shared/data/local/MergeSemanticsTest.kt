@@ -2,14 +2,18 @@ package com.financeos.shared.data.local
 
 import androidx.room3.Room
 import com.financeos.shared.data.local.repository.LocalFinanceDataRepository
+import com.financeos.shared.data.local.repository.LocalBudgetRepository
 import com.financeos.shared.data.local.repository.LocalTransactionRepository
 import com.financeos.shared.domain.model.FinanceDataSnapshot
+import com.financeos.shared.domain.model.Budget
+import com.financeos.shared.domain.model.BudgetMonth
 import com.financeos.shared.domain.model.Transaction
 import com.financeos.shared.domain.model.TransactionType
 import com.financeos.shared.domain.time.EpochClock
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
@@ -183,6 +187,52 @@ class MergeSemanticsTest {
         } finally {
             local.close()
             remote.close()
+        }
+    }
+
+    @Test
+    fun budgetsWithDifferentIdsConvergeByScopeAndKeepNewerTombstone() = runTest {
+        val first = openMemoryDatabase()
+        val second = openMemoryDatabase()
+        try {
+            val month = BudgetMonth(2026, 8)
+            val old = Budget("mac-id", month, 90_000L, updatedAt = 100L)
+            val recent = Budget("android-id", month, 150_000L, updatedAt = 200L, deletedAt = 200L)
+            val earlier = FinanceDataSnapshot(emptyList(), emptyList(), listOf(old))
+            val later = FinanceDataSnapshot(emptyList(), emptyList(), listOf(recent))
+            val firstRepo = LocalFinanceDataRepository(first)
+            val secondRepo = LocalFinanceDataRepository(second)
+            firstRepo.merge(earlier)
+            firstRepo.merge(later)
+            secondRepo.merge(later)
+            secondRepo.merge(earlier)
+
+            assertEquals(listOf(recent), firstRepo.snapshot().budgets)
+            assertEquals(listOf(recent), secondRepo.snapshot().budgets)
+            assertNull(LocalBudgetRepository(second.budgetDao()).get(month))
+            assertFailsWith<IllegalArgumentException> {
+                secondRepo.replaceAll(earlier.copy(budgets = listOf(old, recent)))
+            }
+            assertEquals(listOf(recent), secondRepo.snapshot().budgets)
+        } finally {
+            first.close()
+            second.close()
+        }
+    }
+
+    @Test
+    fun equalTimestampDeletionWinsOverUnrelatedContentDifferences() = runTest {
+        val database = openMemoryDatabase()
+        try {
+            val repository = LocalFinanceDataRepository(database)
+            val alive = alive("tx-1", updatedAt = 100L, note = "z")
+            val deleted = alive.copy(note = "a", deletedAt = 100L)
+            repository.merge(singleSnapshot(alive))
+            repository.merge(singleSnapshot(deleted))
+            repository.merge(singleSnapshot(alive))
+            assertEquals(deleted, repository.snapshot().transactions.single())
+        } finally {
+            database.close()
         }
     }
 

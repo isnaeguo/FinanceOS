@@ -26,6 +26,8 @@ class FinanceDataJsonCodec {
     /** 输出稳定、可读且不含平台存储细节的 JSON，总是包含软删墓碑以传播删除操作。 */
     fun encode(snapshot: FinanceDataSnapshot): String = json.encodeToString(
         BackupDocument(
+            format = BACKUP_FORMAT,
+            schemaVersion = CURRENT_SCHEMA_VERSION,
             transactions = snapshot.transactions
                 .sortedBy(Transaction::id)
                 .map(TransactionDocument::fromDomain),
@@ -74,12 +76,12 @@ class DataTransferException(
 
 @Serializable
 private data class BackupDocument(
-    val format: String = BACKUP_FORMAT,
+    val format: String,
     @SerialName("schema_version")
-    val schemaVersion: Int = CURRENT_SCHEMA_VERSION,
-    val transactions: List<TransactionDocument> = emptyList(),
-    val categories: List<CategoryDocument> = emptyList(),
-    val budgets: List<BudgetDocument> = emptyList(),
+    val schemaVersion: Int,
+    val transactions: List<TransactionDocument>,
+    val categories: List<CategoryDocument>,
+    val budgets: List<BudgetDocument>,
 )
 
 @Serializable

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shortcut_record">记一笔</string>
+    <string name="shortcut_workspace">财务工作台</string>
+</resources>

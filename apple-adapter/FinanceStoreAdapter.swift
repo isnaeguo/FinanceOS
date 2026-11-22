@@ -1,6 +1,6 @@
 import Foundation
 import Observation
-import FinanceOSShared
+@preconcurrency import FinanceOSShared
 
 /// 与旧 FinanceStore 等价的 JSON/CSV 静态编解码入口（内部走 shared 的 v2 codec）。
 enum FinanceDataJsonCodec {
@@ -72,17 +72,82 @@ extension Notification.Name {
 
 // MARK: - 主适配器
 
-/// 个人财务本地存储的 Swift 视图适配器。
-///
-/// 业务内核是 KMP `shared`（Room 数据库 + v2 合并/编解码/去重）。本类维护一份与视图同构的
-/// 内存投影：所有写操作同步更新内存（视图立即一致）并在后台落到 Room；Room 的响应式查询
-/// 回流后以 shared 的裁决结果为准。首次启动检测旧 `store.json`：可解析则导入 Room 并把旧文件
-/// 改名为 `.migrated-<时间戳>`，解析失败保留现场并提示（沿用 `.damaged-*` 惯例）。
+/// 时间倒序的内存索引。查询月份只访问对应区间，软删记录仍可按 ID 核对。
+struct LedgerIndex: Sendable {
+    let records: [Transaction]
+    let accounts: [String]
+    private let positions: [String: Int]
+
+    init(_ transactions: [Transaction] = []) {
+        self.init(ordered: transactions.sorted(by: Self.newestFirst))
+    }
+
+    static func replacement(_ records: [Transaction], comparedTo current: [Transaction]) -> LedgerIndex? {
+        let sorted = records.sorted(by: Self.newestFirst)
+        return sorted == current ? nil : LedgerIndex(ordered: sorted)
+    }
+
+    private init(ordered: [Transaction]) {
+        records = ordered
+        var positions: [String: Int] = [:]
+        positions.reserveCapacity(ordered.count)
+        var accounts = Set<String>()
+        for (position, transaction) in ordered.enumerated() {
+            positions[transaction.id] = position
+            if !transaction.isDeleted, let account = transaction.accountId {
+                accounts.insert(account)
+            }
+        }
+        self.positions = positions
+        self.accounts = accounts.sorted()
+    }
+
+    subscript(id: String) -> Transaction? {
+        positions[id].map { records[$0] }
+    }
+
+    func slice(start: Date, end: Date) -> ArraySlice<Transaction> {
+        guard start < end else { return records[0..<0] }
+        let first = Self.partitionIndex(in: records) { $0.dateTime >= end }
+        let last = Self.partitionIndex(in: records, from: first) { $0.dateTime >= start }
+        return records[first..<last]
+    }
+
+    func setting(_ transaction: Transaction) -> LedgerIndex {
+        var ordered = records
+        if let position = positions[transaction.id] { ordered.remove(at: position) }
+        let insertion = Self.partitionIndex(in: ordered) { Self.newestFirst($0, transaction) }
+        ordered.insert(transaction, at: insertion)
+        return LedgerIndex(ordered: ordered)
+    }
+
+    private static func newestFirst(_ lhs: Transaction, _ rhs: Transaction) -> Bool {
+        lhs.dateTime != rhs.dateTime ? lhs.dateTime > rhs.dateTime : lhs.id < rhs.id
+    }
+
+    private static func partitionIndex(
+        in records: [Transaction], from start: Int = 0, while predicate: (Transaction) -> Bool
+    ) -> Int {
+        var lower = start
+        var upper = records.count
+        while lower < upper {
+            let middle = lower + (upper - lower) / 2
+            if predicate(records[middle]) { lower = middle + 1 }
+            else { upper = middle }
+        }
+        return lower
+    }
+}
+
+/// SwiftUI 所用的 Room 数据投影。写入按发起顺序提交，最后一次提交后刷新。
 @MainActor
 @Observable
 final class FinanceStoreAdapter {
-    private(set) var allTransactions: [Transaction] = []
+    private(set) var ledger = LedgerIndex()
+    private(set) var ledgerRevision: UInt64 = 0
     private(set) var allCategories: [Category] = []
+    private(set) var categories: [Category] = []
+    private(set) var categoryLookup: [String: Category] = [:]
     private(set) var allBudgets: [Budget] = []
     private(set) var lastError: String?
     private(set) var loadDate = Date()
@@ -90,14 +155,15 @@ final class FinanceStoreAdapter {
     let location: StoreLocationProviding
     let calendar: Calendar
 
-    var saveTask: Task<Void, Never>?
+    private(set) var saveTask: Task<Void, Never>?
+    private var writeRevision: UInt64 = 0
 
+    private let customDatabasePath: String?
     private let database: FinanceOsDatabase
     private let dataRepository: LocalFinanceDataRepository
     private let transactionRepository: LocalTransactionRepository
+    private let budgetRepository: LocalBudgetRepository
     private let clock = SystemEpochClock()
-    private var flowTasks: [Task<Void, Never>] = []
-    private var lastSnapshot: FinanceDataSnapshot?
 
     convenience init(location: StoreLocationProviding = DefaultStoreLocation(), calendar: Calendar = .current) {
         self.init(location: location, databasePath: nil, calendar: calendar)
@@ -107,34 +173,32 @@ final class FinanceStoreAdapter {
     init(location: StoreLocationProviding, databasePath: String?, calendar: Calendar) {
         self.location = location
         self.calendar = calendar
+        customDatabasePath = databasePath
         database = AppleDatabaseLocationKt.createAppleFinanceOsDatabase(path: databasePath)
         dataRepository = LocalFinanceDataRepository(database: database)
         transactionRepository = LocalTransactionRepository(dao: database.transactionDao(), clock: clock)
-        migrateLegacyStoreIfNeeded()
-        scheduleSave()
-        startObservation()
+        budgetRepository = LocalBudgetRepository(dao: database.budgetDao(), clock: clock)
+        saveTask = Task { [weak self] in
+            guard let self else { return }
+            await self.migrateLegacyStoreIfNeeded()
+            if self.writeRevision == 0 { await self.refreshFromDatabase(revision: 0) }
+        }
     }
 
     // MARK: - 视图可见数据（不含墓碑）
 
-    var transactions: [Transaction] {
-        allTransactions.filter { !$0.isDeleted }
-            .sorted { $0.dateTime != $1.dateTime ? $0.dateTime > $1.dateTime : $0.id < $1.id }
-    }
-
-    var categories: [Category] { allCategories.filter { !$0.isDeleted }.sorted { $0.id < $1.id } }
+    var transactions: [Transaction] { ledger.records.filter { !$0.isDeleted } }
 
     var budgets: [Budget] { allBudgets.filter { !$0.isDeleted } }
 
-    var knownAccounts: [String] {
-        Array(Set(allTransactions.compactMap(\.accountId))).sorted()
-    }
+    var knownAccounts: [String] { ledger.accounts }
 
     // MARK: - 旧 store.json 迁移
 
     /// 历史 store.json 可能出现的位置：App Group 启用前的 Application Support 是存量主路径，
     /// 启用后的组容器是本轮新装路径；两者都检查，避免启用组能力后丢数据。
     private func legacyStoreCandidates() -> [URL] {
+        if customDatabasePath != nil { return [location.storeURL()] }
         let group = FileManager.default
             .containerURL(forSecurityApplicationGroupIdentifier: DefaultStoreLocation.appGroupIdentifier)?
             .appendingPathComponent("FinanceOS/store.json")
@@ -147,75 +211,97 @@ final class FinanceStoreAdapter {
         return candidates
     }
 
-    private func migrateLegacyStoreIfNeeded() {
-        let url = legacyStoreCandidates().first { FileManager.default.fileExists(atPath: $0.path) }
-        guard let url else { return }
+    private func migrateLegacyStoreIfNeeded() async {
+        guard let url = legacyStoreCandidates().first(where: { FileManager.default.fileExists(atPath: $0.path) }) else {
+            return
+        }
         do {
             let content = try String(contentsOf: url, encoding: .utf8)
             let snapshot = try FinanceDataJsonCodec.decode(content)
+            _ = try await dataRepository.merge(snapshot: snapshot.toKMP())
             let migratedURL = url.deletingPathExtension()
-                .appendingPathExtension("migrated-\(Int(Date().timeIntervalSince1970)).json")
-            try? FileManager.default.removeItem(at: migratedURL)
+                .appendingPathExtension("migrated-\(UUID().uuidString).json")
             try FileManager.default.moveItem(at: url, to: migratedURL)
-            let categories = snapshot.categories.isEmpty ? DefaultCategories.all : snapshot.categories
-            allTransactions = snapshot.transactions
-            allCategories = categories
-            allBudgets = snapshot.budgets
-            persistReplaceAll(snapshot: FinanceDataSnapshot(transactions: snapshot.transactions, categories: categories, budgets: snapshot.budgets))
         } catch {
-            // 解析失败不删除原文件：保留现场并提示，与旧 `.damaged-*` 惯例一致。
-            let aside = url.deletingPathExtension().appendingPathExtension("damaged-\(Int(loadDate.timeIntervalSince1970)).json")
-            try? FileManager.default.removeItem(at: aside)
-            try? FileManager.default.moveItem(at: url, to: aside)
-            lastError = "本地数据文件无法读取（\(error.localizedDescription)），已保留原文件并重新初始化。"
-            allCategories = DefaultCategories.all
+            lastError = "旧账本迁移未完成，原文件已保留。\(error.localizedDescription)"
         }
     }
 
-    /// 启动后从 Room 全量加载（含墓碑），供 UI 使用与导出缓存。
-    private func startObservation() {
-        let refresh: Task<Void, Never> = Task { [weak self] in
-            guard let self else { return }
-            await self.refreshFromDatabase()
+    private func refreshFromDatabase(revision: UInt64) async {
+        do {
+            let (snapshot, index) = try await Self.loadProjection(
+                repository: dataRepository, previousRecords: ledger.records
+            )
+            if revision == writeRevision { apply(snapshot: snapshot, ledger: index) }
+        } catch {
+            lastError = "无法读取账本。\(error.localizedDescription)"
         }
-        flowTasks.append(refresh)
     }
 
-    private func refreshFromDatabase() async {
-        if let snapshot = try? await readSnapshot() {
-            apply(snapshot: snapshot)
-        }
-        NotificationCenter.default.post(name: .financeosDataDidChange, object: nil)
+    nonisolated private static func loadProjection(
+        repository: LocalFinanceDataRepository, previousRecords: [Transaction]
+    ) async throws -> (FinanceDataSnapshot, LedgerIndex?) {
+        let snapshot = FinanceDataSnapshot(kmp: try await repository.snapshot())
+        return (snapshot, LedgerIndex.replacement(snapshot.transactions, comparedTo: previousRecords))
     }
 
-    private func apply(snapshot: FinanceDataSnapshot) {
-        allTransactions = snapshot.transactions.sorted { $0.dateTime > $1.dateTime }
-        allCategories = snapshot.categories
+    private func apply(snapshot: FinanceDataSnapshot, ledger: LedgerIndex?) {
+        if let ledger { setLedger(ledger) }
+        setCategories(snapshot.categories)
         allBudgets = snapshot.budgets
-        lastSnapshot = snapshot
         NotificationCenter.default.post(name: .financeosDataDidChange, object: nil)
+    }
+
+    private func setLedger(_ index: LedgerIndex) {
+        ledger = index
+        ledgerRevision &+= 1
+    }
+
+    private func setCategories(_ records: [Category]) {
+        guard records != allCategories else { return }
+        allCategories = records
+        categories = records.filter { !$0.isDeleted }.sorted { $0.id < $1.id }
+        categoryLookup = Dictionary(categories.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        ledgerRevision &+= 1
     }
 
     // MARK: - 持久化
 
-    /// 同步 API 背后的写队列：内存已先行更新，这里把变更落到 shared。
-    private func persist(_ operation: @escaping @Sendable () async -> Void) {
-        saveTask?.cancel()
-        saveTask = Task { [weak self] in
-            await operation()
-            await self?.refreshFromDatabase()
+    private func enqueueWrite<T>(
+        reportError: Bool = true, _ operation: @escaping @MainActor () async throws -> T
+    ) -> Task<T, Error> {
+        let previous = saveTask
+        writeRevision &+= 1
+        let revision = writeRevision
+        let task = Task {
+            await previous?.value
+            return try await operation()
         }
+        saveTask = Task { [weak self] in
+            do { _ = try await task.value }
+            catch {
+                if reportError { self?.lastError = "账本写入失败。\(error.localizedDescription)" }
+            }
+            if let self, revision == self.writeRevision {
+                await self.refreshFromDatabase(revision: revision)
+            }
+        }
+        return task
+    }
+
+    private func persist(_ operation: @escaping @MainActor () async throws -> Void) {
+        _ = enqueueWrite(operation)
     }
 
     private func persistReplaceAll(snapshot: FinanceDataSnapshot) {
         persist { [dataRepository] in
-            _ = try? await dataRepository.replaceAll(snapshot: snapshot.toKMP())
+            _ = try await dataRepository.replaceAll(snapshot: snapshot.toKMP())
         }
     }
 
     private func persistMerge(snapshot: FinanceDataSnapshot) {
         persist { [dataRepository] in
-            _ = try? await dataRepository.merge(snapshot: snapshot.toKMP())
+            _ = try await dataRepository.merge(snapshot: snapshot.toKMP())
         }
     }
 
@@ -224,19 +310,66 @@ final class FinanceStoreAdapter {
         return FinanceDataSnapshot(kmp: kmp)
     }
 
+    func clearError() { lastError = nil }
+
     func scheduleSave() {
         // Room 已负责持久化，保留空实现以兼容旧调用点。
     }
 
-    var storeLocationDescription: String { location.storeURL().path }
+    var storeLocationDescription: String { storeURL().path }
 
-    func storeURL() -> URL { location.storeURL() }
+    func storeURL() -> URL {
+        if let customDatabasePath { return URL(fileURLWithPath: customDatabasePath) }
+        if let path = try? AppleDatabaseLocationKt.defaultAppleFinanceOsDatabasePath() {
+            return URL(fileURLWithPath: path)
+        }
+        return location.storeURL()
+    }
 
     // MARK: - 分类查询
 
     func category(id: String?) -> Category? {
         guard let id else { return nil }
-        return categories.first { $0.id == id }
+        return categoryLookup[id]
+    }
+
+    func transaction(id: String) -> Transaction? {
+        guard let record = ledger[id], !record.isDeleted else { return nil }
+        return record
+    }
+
+    func containsTransaction(id: String) -> Bool { ledger[id] != nil }
+
+    func applyAiCategory(_ expected: Transaction, categoryId: String) async throws -> Bool {
+        let task = enqueueWrite { [transactionRepository] in
+            try await transactionRepository.updateCategory(expected: expected.toKMP(), newCategoryId: categoryId)
+        }
+        return try await task.value.boolValue
+    }
+
+    func createAiCategory(_ expected: Transaction, name: String) async throws -> Bool {
+        let id = "user-\(UUID().uuidString.lowercased())"
+        let task = enqueueWrite(reportError: false) { [transactionRepository] in
+            try await transactionRepository.updateCategoryWithNewCategory(
+                expected: expected.toKMP(), categoryId: id, name: name
+            )
+        }
+        return try await task.value.boolValue
+    }
+
+    func applyWorkspaceRules(_ suggestions: [WorkspaceRuleSuggestion]) async throws -> Int {
+        let task = enqueueWrite(reportError: false) { [transactionRepository] in
+            var applied = 0
+            for entry in suggestions {
+                if try await transactionRepository.updateCategory(
+                    expected: entry.transaction, newCategoryId: entry.categoryId
+                ).boolValue {
+                    applied += 1
+                }
+            }
+            return applied
+        }
+        return try await task.value
     }
 
     func categories(for type: TransactionType) -> [Category] {
@@ -251,7 +384,7 @@ final class FinanceStoreAdapter {
         upsertLocally(stamped)
         let kmp = stamped.toKMP()
         persist { [transactionRepository] in
-            _ = try? await transactionRepository.add(transaction: kmp)
+            _ = try await transactionRepository.add(transaction: kmp)
         }
     }
 
@@ -262,26 +395,37 @@ final class FinanceStoreAdapter {
         upsertLocally(stamped)
         let kmp = stamped.toKMP()
         persist { [transactionRepository] in
-            _ = try? await transactionRepository.add(transaction: kmp)
+            _ = try await transactionRepository.add(transaction: kmp)
         }
     }
 
+    func saveTransaction(_ transaction: Transaction, expected: Transaction?) async throws -> Bool {
+        let task = enqueueWrite { [transactionRepository] in
+            if let expected {
+                return try await transactionRepository.update(
+                    expected: expected.toKMP(), replacement: transaction.toKMP()
+                ).boolValue
+            }
+            _ = try await transactionRepository.add(transaction: transaction.toKMP())
+            return true
+        }
+        return try await task.value
+    }
+
     func deleteTransaction(id: String) {
-        guard let existing = allTransactions.first(where: { $0.id == id }) else { return }
+        guard let existing = transaction(id: id) else { return }
         let now = clock.nowMillis()
         var tombstone = existing
         tombstone.deletedAt = now
         tombstone.updatedAt = now
         upsertLocally(tombstone)
         persist { [transactionRepository] in
-            _ = try? await transactionRepository.delete(id: id)
+            _ = try await transactionRepository.delete(id: id)
         }
     }
 
     private func upsertLocally(_ transaction: Transaction) {
-        allTransactions.removeAll { $0.id == transaction.id }
-        allTransactions.append(transaction)
-        allTransactions.sort { $0.dateTime > $1.dateTime }
+        setLedger(ledger.setting(transaction))
     }
 
     // MARK: - 分类 CRUD
@@ -296,8 +440,7 @@ final class FinanceStoreAdapter {
             isSystem: false,
             updatedAt: clock.nowMillis()
         )
-        allCategories.removeAll { $0.id == category.id }
-        allCategories.append(category)
+        setCategories(allCategories + [category])
         persistMerge(snapshot: FinanceDataSnapshot(transactions: [], categories: [category], budgets: []))
         return category
     }
@@ -307,8 +450,7 @@ final class FinanceStoreAdapter {
         var tombstone = category
         tombstone.deletedAt = clock.nowMillis()
         tombstone.updatedAt = tombstone.deletedAt ?? 0
-        allCategories.removeAll { $0.id == id }
-        allCategories.append(tombstone)
+        setCategories(allCategories.filter { $0.id != id } + [tombstone])
         persistMerge(snapshot: FinanceDataSnapshot(transactions: [], categories: [tombstone], budgets: []))
         return true
     }
@@ -325,32 +467,19 @@ final class FinanceStoreAdapter {
 
     func setBudget(month: BudgetMonth, categoryId: String?, amountLimit: Int64) {
         precondition(amountLimit >= 0, "Budget amountLimit must not be negative.")
-        let now = clock.nowMillis()
+        let kmpMonth = KotlinBudgetMonth(year: Int32(month.year), month: Int32(month.month))
         if amountLimit == 0 {
-            guard let existing = allBudgets.first(where: { $0.month == month && $0.categoryId == categoryId }) else { return }
-            var tombstone = existing
-            tombstone.deletedAt = now
-            tombstone.updatedAt = now
-            allBudgets.removeAll { $0.id == existing.id }
-            allBudgets.append(tombstone)
-            persistMerge(snapshot: FinanceDataSnapshot(transactions: [], categories: [], budgets: [tombstone]))
-        } else if let index = allBudgets.firstIndex(where: { $0.month == month && $0.categoryId == categoryId }) {
-            var updated = allBudgets[index]
-            updated.amountLimit = amountLimit
-            updated.updatedAt = now
-            updated.deletedAt = nil
-            allBudgets[index] = updated
-            persistMerge(snapshot: FinanceDataSnapshot(transactions: [], categories: [], budgets: [updated]))
+            persist { [budgetRepository] in
+                _ = try await budgetRepository.delete(month: kmpMonth, categoryId: categoryId)
+            }
         } else {
             let budget = Budget(
                 id: "budget-\(UUID().uuidString.lowercased())",
                 month: month,
                 amountLimit: amountLimit,
-                categoryId: categoryId,
-                updatedAt: now
+                categoryId: categoryId
             )
-            allBudgets.append(budget)
-            persistMerge(snapshot: FinanceDataSnapshot(transactions: [], categories: [], budgets: [budget]))
+            persist { [budgetRepository] in try await budgetRepository.save(budget: budget.toKMP()) }
         }
     }
 
@@ -364,56 +493,105 @@ final class FinanceStoreAdapter {
 
     // MARK: - 派生查询（显示层计算，输入为当前可见数据）
 
+    func transactionSlice(in period: MonthPeriod) -> ArraySlice<Transaction> {
+        ledger.slice(start: period.startInclusive, end: period.endExclusive)
+    }
+
     func monthlyTransactions(in period: MonthPeriod) -> [Transaction] {
-        transactions.filter { period.contains($0.dateTime) }
+        transactionSlice(in: period).filter { !$0.isDeleted }
     }
 
     func monthlySummary(in period: MonthPeriod) -> MonthlySummary {
-        SummaryCalculations.monthlySummary(transactions: monthlyTransactions(in: period))
+        SummaryCalculations.monthlySummary(transactions: transactionSlice(in: period))
     }
 
-    func budgetStatus(in period: MonthPeriod) -> MonthlyBudgetStatus {
+    func budgetStatus(in period: MonthPeriod, summary: MonthlySummary? = nil) -> MonthlyBudgetStatus {
         let monthBudgets = allBudgets.filter { !$0.isDeleted && $0.month == period.month }
-        return SummaryCalculations.budgetStatus(summary: monthlySummary(in: period), budgets: monthBudgets)
+        return SummaryCalculations.budgetStatus(summary: summary ?? monthlySummary(in: period), budgets: monthBudgets)
     }
 
     func dailyAvailableBudget(today: Date = Date(), calendar: Calendar = .current) -> DailyAvailableBudget? {
         let month = BudgetMonth(year: calendar.component(.year, from: today), month: calendar.component(.month, from: today))
         let period = month.period(calendar: calendar)
+        guard let budget = totalBudget(month: month) else { return nil }
         let startOfToday = calendar.startOfDay(for: today)
         let day = calendar.component(.day, from: today)
         return SummaryCalculations.dailyAvailableBudget(
             period: period,
             currentDayOfMonth: day,
             startOfToday: startOfToday,
-            totalBudget: totalBudget(month: month),
-            transactions: monthlyTransactions(in: period)
+            totalBudget: budget,
+            transactions: ledger.slice(start: period.startInclusive, end: startOfToday)
         )
+    }
+
+    func loadExpenseTrend(periods: [ExpenseTrendPeriod]) async -> [ExpenseTrendPoint] {
+        guard let first = periods.first, let last = periods.last else { return [] }
+        let rows = ledger.slice(start: first.startInclusive, end: last.endExclusive)
+        let worker = Task.detached(priority: .userInitiated) {
+            SummaryCalculations.expenseTrend(periods: periods, transactions: rows)
+        }
+        return await withTaskCancellationHandler {
+            await worker.value
+        } onCancel: {
+            worker.cancel()
+        }
     }
 
     func monthlyExpenseTrend(anchorMonth: BudgetMonth, count: Int = 6) -> [ExpenseTrendPoint] {
         let periods = SummaryCalculations.monthTrendPeriods(anchorMonth: anchorMonth, count: count, calendar: calendar)
         guard let first = periods.first, let last = periods.last else { return [] }
-        let rangeTransactions = allTransactions.filter { !$0.isDeleted && $0.dateTime >= first.startInclusive && $0.dateTime < last.endExclusive }
+        let rangeTransactions = ledger.slice(start: first.startInclusive, end: last.endExclusive)
         return SummaryCalculations.expenseTrend(periods: periods, transactions: rangeTransactions)
     }
 
     func dailyExpenseTrendData(anchorDay: Date = Date(), days: Int) -> [DailyTrendDatum] {
         let periods = SummaryCalculations.dailyTrendPeriods(anchorDay: anchorDay, days: days, calendar: calendar)
         guard let first = periods.first, let last = periods.last else { return [] }
-        let rangeTransactions = allTransactions.filter { !$0.isDeleted && $0.dateTime >= first.startInclusive && $0.dateTime < last.endExclusive }
+        let rangeTransactions = ledger.slice(start: first.startInclusive, end: last.endExclusive)
         let points = SummaryCalculations.expenseTrend(periods: periods, transactions: rangeTransactions)
         return zip(periods, points).map { DailyTrendDatum(date: $0.startInclusive, amount: $1.amount) }
     }
 
     func recentTransactions(limit: Int) -> [Transaction] {
-        Array(transactions.prefix(limit))
+        Array(ledger.records.lazy.filter { !$0.isDeleted }.prefix(max(0, limit)))
     }
 
     // MARK: - 导入 / 导出 / 备份
 
     func currentSnapshot() -> FinanceDataSnapshot {
-        FinanceDataSnapshot(transactions: transactions, categories: categories, budgets: budgets)
+        FinanceDataSnapshot(transactions: ledger.records, categories: allCategories, budgets: allBudgets)
+    }
+
+    func mergeBackup(_ snapshot: FinanceDataSnapshot) async throws -> FinanceDataImportResult {
+        let task = enqueueWrite { [dataRepository] in
+            try await dataRepository.merge(snapshot: snapshot.toKMP())
+        }
+        return FinanceDataImportResult(kmp: try await task.value)
+    }
+
+    func replaceBackup(_ snapshot: FinanceDataSnapshot) async throws -> FinanceDataImportResult {
+        let task = enqueueWrite { [dataRepository] in
+            try await dataRepository.replaceAll(snapshot: snapshot.toKMP())
+        }
+        return FinanceDataImportResult(kmp: try await task.value)
+    }
+
+    func insertStatementTransactions(_ transactions: [Transaction]) async throws -> FinanceDataImportResult {
+        let task = enqueueWrite { [dataRepository] in
+            try await dataRepository.importTransactions(transactions: transactions.map { $0.toKMP() })
+        }
+        return FinanceDataImportResult(kmp: try await task.value)
+    }
+
+    func exportCommittedJSON() async throws -> String {
+        await saveTask?.value
+        return try FinanceDataJsonCodec.encode(try await readSnapshot())
+    }
+
+    func exportCommittedCSV() async throws -> String {
+        await saveTask?.value
+        return try TransactionCsvCodec.encode(try await readSnapshot().transactions.filter { !$0.isDeleted })
     }
 
     func importJSON(_ content: String) throws -> FinanceDataImportResult {
@@ -434,6 +612,9 @@ final class FinanceStoreAdapter {
                 categories: kmpCategories,
                 importedAtEpochMillis: clock.nowMillis()
             )
+            guard !decoded.requiresCurrencyConversion else {
+                throw DataTransferError(message: "此外币账单须先换算为人民币。请在 macOS 或 Android 端预览并换算。")
+            }
             transactions = decoded.transactions.map(Transaction.init(kmp:))
         }
         return applyMerge(FinanceDataSnapshot(transactions: transactions, categories: [], budgets: []))
@@ -450,6 +631,9 @@ final class FinanceStoreAdapter {
             categories: categories,
             importedAtEpochMillis: clock.nowMillis()
         )
+        guard !decoded.requiresCurrencyConversion else {
+            throw DataTransferError(message: "此外币账单须先换算为人民币。请在 macOS 或 Android 端预览并换算。")
+        }
         let transactions = decoded.transactions.map(Transaction.init(kmp:))
         return applyMerge(FinanceDataSnapshot(transactions: transactions, categories: [], budgets: []))
     }
@@ -458,7 +642,7 @@ final class FinanceStoreAdapter {
         let snapshot = try FinanceDataJsonCodec.decode(content)
         let categories = snapshot.categories.isEmpty ? DefaultCategories.all : snapshot.categories
         let restored = FinanceDataSnapshot(transactions: snapshot.transactions, categories: categories, budgets: snapshot.budgets)
-        apply(snapshot: restored)
+        apply(snapshot: restored, ledger: LedgerIndex(restored.transactions))
         persistReplaceAll(snapshot: restored)
         return FinanceDataImportResult(
             transactionCount: restored.transactions.count,
@@ -473,28 +657,24 @@ final class FinanceStoreAdapter {
         var newCategories = 0
         var newBudgets = 0
 
-        for transaction in snapshot.transactions {
-            if let local = allTransactions.first(where: { $0.id == transaction.id }) {
-                if transaction.updatedAt > local.updatedAt || (transaction.updatedAt == local.updatedAt && transaction != local) {
-                    upsertLocally(transaction)
-                    newTransactions += 1
-                }
-            } else {
-                upsertLocally(transaction)
+        if !snapshot.transactions.isEmpty {
+            var records = Dictionary(ledger.records.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest })
+            for transaction in snapshot.transactions {
+                if let local = records[transaction.id],
+                   transaction.updatedAt < local.updatedAt || transaction == local { continue }
+                records[transaction.id] = transaction
                 newTransactions += 1
             }
+            if newTransactions > 0 { setLedger(LedgerIndex(Array(records.values))) }
         }
-        for category in snapshot.categories {
-            if allCategories.contains(where: { $0.id == category.id }) {
-                if let index = allCategories.firstIndex(where: { $0.id == category.id }),
-                   category.updatedAt > allCategories[index].updatedAt {
-                    allCategories[index] = category
-                    newCategories += 1
-                }
-            } else {
-                allCategories.append(category)
+        if !snapshot.categories.isEmpty {
+            var records = Dictionary(allCategories.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest })
+            for category in snapshot.categories {
+                if let local = records[category.id], category.updatedAt <= local.updatedAt { continue }
+                records[category.id] = category
                 newCategories += 1
             }
+            if newCategories > 0 { setCategories(records.values.sorted { $0.id < $1.id }) }
         }
         for budget in snapshot.budgets {
             if let index = allBudgets.firstIndex(where: { $0.id == budget.id }) {
@@ -516,8 +696,7 @@ final class FinanceStoreAdapter {
     }
 
     func exportJSON() throws -> String {
-        let source = lastSnapshot ?? currentSnapshot()
-        return try FinanceDataJsonCodec.encode(source)
+        try FinanceDataJsonCodec.encode(currentSnapshot())
     }
 
     func exportCSV() throws -> String {

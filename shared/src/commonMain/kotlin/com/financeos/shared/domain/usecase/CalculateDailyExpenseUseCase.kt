@@ -18,7 +18,8 @@ class CalculateDailyExpenseUseCase {
         return transactions
             .asSequence()
             .filter { transaction ->
-                transaction.type == TransactionType.EXPENSE &&
+                transaction.deletedAt == null &&
+                    transaction.type == TransactionType.EXPENSE &&
                     transaction.dateTime >= startOfDayInclusive &&
                     transaction.dateTime < startOfNextDayExclusive
             }

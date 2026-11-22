@@ -109,20 +109,9 @@ struct Category: Identifiable, Hashable, Sendable {
     }
 }
 
-/// FinanceOS 内置分类，固定 ID 与 shared 端一致。
+/// FinanceOS 内置分类由 shared 维护。
 enum DefaultCategories {
-    static let all: [Category] = [
-        Category(id: "system-food", name: "餐饮", type: .expense, iconKey: "food", isSystem: true, updatedAt: 0),
-        Category(id: "system-transport", name: "交通", type: .expense, iconKey: "transport", isSystem: true, updatedAt: 0),
-        Category(id: "system-shopping", name: "购物", type: .expense, iconKey: "shopping", isSystem: true, updatedAt: 0),
-        Category(id: "system-entertainment", name: "娱乐", type: .expense, iconKey: "entertainment", isSystem: true, updatedAt: 0),
-        Category(id: "system-digital", name: "数码", type: .expense, iconKey: "digital", isSystem: true, updatedAt: 0),
-        Category(id: "system-learning", name: "学习", type: .expense, iconKey: "learning", isSystem: true, updatedAt: 0),
-        Category(id: "system-travel", name: "旅行", type: .expense, iconKey: "travel", isSystem: true, updatedAt: 0),
-        Category(id: "system-daily-needs", name: "日用品", type: .expense, iconKey: "daily-needs", isSystem: true, updatedAt: 0),
-        Category(id: "system-income", name: "工资/生活费", type: .income, iconKey: "income", isSystem: true, updatedAt: 0),
-        Category(id: "system-other", name: "其他", type: .common, iconKey: "other", isSystem: true, updatedAt: 0),
-    ]
+    static let all = FinanceOSShared.DefaultCategories.shared.all.map(Category.init(kmp:))
 }
 
 /// 跨平台的预算月份。
@@ -280,14 +269,14 @@ struct DataTransferError: LocalizedError {
 // MARK: - 时间与金额工具（视图共用，与 shared 测试向量一致）
 
 enum MoneyInput {
-    private static let maxMajorDigits = 9
+    private static let maxMajorDigits = 17
 
     /// 过滤金额输入，只保留最多两位小数的十进制格式。
     static func normalizeAmountInput(_ rawInput: String) -> String? {
         let normalized = rawInput.replacingOccurrences(of: ",", with: ".")
         if normalized.isEmpty { return normalized }
         // 只允许 digits 与至多一个点与两位小数。
-        guard normalized.allSatisfy({ $0.isNumber || $0 == "." }) else { return nil }
+        guard normalized.allSatisfy({ ($0.isASCII && $0.isNumber) || $0 == "." }) else { return nil }
         let parts = normalized.split(separator: ".", omittingEmptySubsequences: false)
         guard parts.count <= 2 else { return nil }
         guard parts[0].count <= maxMajorDigits, (parts.count == 1 || parts[1].count <= 2) else { return nil }
@@ -296,36 +285,29 @@ enum MoneyInput {
 
     /// 将用户输入精确转换为最小货币单位，不经过 Double。
     static func parseAmountInMinorUnits(_ input: String, allowZero: Bool = false) -> Int64? {
-        let trimmed = input.trimmingCharacters(in: .whitespaces)
-        if trimmed.isEmpty || trimmed == "." { return nil }
-        let parts = trimmed.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
-        guard parts.count <= 2 else { return nil }
+        guard let normalized = normalizeAmountInput(input.trimmingCharacters(in: .whitespacesAndNewlines)),
+              !normalized.isEmpty, normalized != "." else { return nil }
+        let parts = normalized.split(separator: ".", omittingEmptySubsequences: false)
         guard let major = Int64(parts[0].isEmpty ? "0" : String(parts[0])) else { return nil }
-        let minor: Int64
-        if parts.count > 1 {
-            let padded = String(parts[1]).padding(toLength: 2, withPad: "0", startingAt: 0)
-            guard let value = Int64(padded.prefix(2)) else { return nil }
-            minor = value
-        } else {
-            minor = 0
-        }
+        let fraction = parts.count > 1 ? String(parts[1]) : ""
+        guard let minor = Int64(fraction.padding(toLength: 2, withPad: "0", startingAt: 0)) else { return nil }
         let (amount, didOverflow) = major.multipliedReportingOverflow(by: 100)
         if didOverflow { return nil }
-        let (total, didUnderflow) = amount.addingReportingOverflow(minor)
-        if didUnderflow { return nil }
+        let (total, overflowed) = amount.addingReportingOverflow(minor)
+        if overflowed { return nil }
         return total > 0 || (allowZero && total == 0) ? total : nil
     }
 
     /// 统一的人民币符号、千位分隔和两位小数。
     static func formatMoney(_ amountMinor: Int64) -> String {
-        let magnitude = abs(amountMinor)
+        let magnitude = amountMinor.magnitude
         let major = String(magnitude / 100)
         var grouped = ""
         for (offset, character) in major.reversed().enumerated() {
             if offset > 0 && offset % 3 == 0 { grouped.insert(",", at: grouped.startIndex) }
             grouped.insert(character, at: grouped.startIndex)
         }
-        let minor = String(format: "%02lld", magnitude % 100)
+        let minor = String(format: "%02llu", magnitude % 100)
         return "\(amountMinor < 0 ? "-" : "")¥\(grouped).\(minor)"
     }
 }
@@ -339,11 +321,11 @@ func normalizeAmountInput(_ rawInput: String) -> String? { MoneyInput.normalizeA
 // MARK: - 计算器（纯 Swift 显示投影；输入为当前内存中的可见数据）
 
 enum SummaryCalculations {
-    static func monthlySummary(transactions: [Transaction]) -> MonthlySummary {
+    static func monthlySummary(transactions: some Sequence<Transaction>) -> MonthlySummary {
         var totalIncome: Int64 = 0
         var totalExpense: Int64 = 0
         var expensesByCategory: [String: Int64] = [:]
-        for transaction in transactions {
+        for transaction in transactions where transaction.deletedAt == nil {
             switch transaction.type {
             case .income:
                 totalIncome = add(totalIncome, transaction.amount)
@@ -363,21 +345,22 @@ enum SummaryCalculations {
         )
     }
 
-    static func add(_ current: Int64, _ amount: Int64) -> Int64 {
-        precondition(amount <= Int64.max - current, "Monthly money total exceeds Int64 range.")
-        return current + amount
+    private static func add(_ current: Int64, _ amount: Int64) -> Int64 {
+        let (sum, overflow) = current.addingReportingOverflow(amount)
+        return overflow ? Int64.max : sum
     }
 
     static func budgetUsage(budget: Budget?, amountUsed: Int64) -> BudgetUsage {
         // amountUsed 允许为负：月总预算按净支出统计，收入大于支出时有结余即不为超支。
-        guard let budget else {
+        guard let budget, !budget.isDeleted else {
             return BudgetUsage(amountLimit: nil, amountUsed: amountUsed, amountRemaining: nil, usageRatio: nil, isOverBudget: false, hasBudget: false)
         }
         let usageRatio: Double? = budget.amountLimit == 0 ? nil : Double(amountUsed) / Double(budget.amountLimit)
+        let (remaining, overflow) = budget.amountLimit.subtractingReportingOverflow(amountUsed)
         return BudgetUsage(
             amountLimit: budget.amountLimit,
             amountUsed: amountUsed,
-            amountRemaining: budget.amountLimit - amountUsed,
+            amountRemaining: overflow ? Int64.max : remaining,
             usageRatio: usageRatio,
             isOverBudget: amountUsed > budget.amountLimit,
             hasBudget: true
@@ -385,9 +368,9 @@ enum SummaryCalculations {
     }
 
     static func budgetStatus(summary: MonthlySummary, budgets: [Budget]) -> MonthlyBudgetStatus {
-        let totalBudget = budgets.first { $0.categoryId == nil }
+        let totalBudget = budgets.first { $0.categoryId == nil && !$0.isDeleted }
         var categoryUsages: [String: BudgetUsage] = [:]
-        for budget in budgets {
+        for budget in budgets where !budget.isDeleted {
             guard let categoryId = budget.categoryId else { continue }
             categoryUsages[categoryId] = budgetUsage(budget: budget, amountUsed: summary.expensesByCategory[categoryId] ?? 0)
         }
@@ -403,17 +386,17 @@ enum SummaryCalculations {
         currentDayOfMonth: Int,
         startOfToday: Date,
         totalBudget: Budget?,
-        transactions: [Transaction]
+        transactions: some Sequence<Transaction>
     ) -> DailyAvailableBudget? {
         let daysInMonth = period.month.daysInMonth
-        precondition((1...daysInMonth).contains(currentDayOfMonth), "Current day must be valid for the budget month.")
-        precondition(period.contains(startOfToday), "Start of today must be inside the budget month.")
-        guard let totalBudget else { return nil }
+        guard (1...daysInMonth).contains(currentDayOfMonth), period.contains(startOfToday),
+              let totalBudget, !totalBudget.isDeleted else { return nil }
 
         var amountUsedBeforeToday: Int64 = 0
-        for transaction in transactions where transaction.type == .expense && transaction.dateTime < startOfToday {
-            precondition(transaction.amount <= Int64.max - amountUsedBeforeToday, "Daily budget expense total exceeds Int64 range.")
-            amountUsedBeforeToday += transaction.amount
+        for transaction in transactions
+        where transaction.deletedAt == nil && transaction.type == .expense
+            && transaction.dateTime >= period.startInclusive && transaction.dateTime < startOfToday {
+            amountUsedBeforeToday = add(amountUsedBeforeToday, transaction.amount)
         }
 
         let amountRemaining = totalBudget.amountLimit - amountUsedBeforeToday
@@ -427,25 +410,47 @@ enum SummaryCalculations {
         )
     }
 
-    static func expenseTrend(periods: [ExpenseTrendPeriod], transactions: [Transaction]) -> [ExpenseTrendPoint] {
-        // 趋势与首页「支出」/月总预算同口径：净支出 = 支出 − 收入，收入≥支出时为负（有结余）。
-        periods.map { period in
-            var expense: Int64 = 0
-            var income: Int64 = 0
-            for transaction in transactions
-            where transaction.dateTime >= period.startInclusive &&
-                transaction.dateTime < period.endExclusive {
-                switch transaction.type {
-                case .expense:
-                    precondition(transaction.amount <= Int64.max - expense, "Expense trend total exceeds Int64 range.")
-                    expense += transaction.amount
-                case .income:
-                    precondition(transaction.amount <= Int64.max - income, "Expense trend total exceeds Int64 range.")
-                    income += transaction.amount
+    static func expenseTrend(periods: [ExpenseTrendPeriod], transactions: some Sequence<Transaction>) -> [ExpenseTrendPoint] {
+        guard !periods.isEmpty else { return [] }
+        let indicesByStart = periods.indices.sorted { periods[$0].startInclusive < periods[$1].startInclusive }
+        let disjoint = zip(indicesByStart, indicesByStart.dropFirst()).allSatisfy { first, next in
+            periods[first].endExclusive <= periods[next].startInclusive
+        }
+        var expenses = Array(repeating: Int64(0), count: periods.count)
+        var incomes = expenses
+        func accumulate(_ transaction: Transaction, at position: Int) {
+            switch transaction.type {
+            case .expense: expenses[position] = add(expenses[position], transaction.amount)
+            case .income: incomes[position] = add(incomes[position], transaction.amount)
+            }
+        }
+        for (offset, transaction) in transactions.enumerated() {
+            if offset.isMultiple(of: 256), Task.isCancelled { return [] }
+            guard !transaction.isDeleted else { continue }
+            let time = transaction.dateTime
+            if disjoint {
+                var lower = 0
+                var upper = periods.count
+                while lower < upper {
+                    let middle = lower + (upper - lower) / 2
+                    if periods[indicesByStart[middle]].startInclusive <= time {
+                        lower = middle + 1
+                    } else {
+                        upper = middle
+                    }
+                }
+                if lower > 0 {
+                    let position = indicesByStart[lower - 1]
+                    if time < periods[position].endExclusive { accumulate(transaction, at: position) }
+                }
+            } else {
+                for position in indicesByStart {
+                    if time < periods[position].startInclusive { break }
+                    if time < periods[position].endExclusive { accumulate(transaction, at: position) }
                 }
             }
-            return ExpenseTrendPoint(key: period.key, amount: expense - income)
         }
+        return periods.indices.map { ExpenseTrendPoint(key: periods[$0].key, amount: expenses[$0] - incomes[$0]) }
     }
 
     static func monthTrendPeriods(anchorMonth: BudgetMonth, count: Int, calendar: Calendar = .current) -> [ExpenseTrendPeriod] {
@@ -482,7 +487,8 @@ extension Date {
     }
 
     var epochMillis: Int64 {
-        Int64((timeIntervalSince1970 * 1000).rounded())
+        let rounded = (timeIntervalSince1970 * 1000).rounded()
+        return Int64(exactly: rounded) ?? (rounded < 0 ? Int64.min : Int64.max)
     }
 }
 

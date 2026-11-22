@@ -8,69 +8,23 @@ struct BudgetView: View {
     @State private var editing: BudgetEditContext?
 
     var body: some View {
-        let period = selectedMonth.period()
-        let status = store.budgetStatus(in: period)
+        let period = selectedMonth.period(calendar: store.calendar)
+        let summary = store.monthlySummary(in: period)
+        let status = store.budgetStatus(in: period, summary: summary)
 
         ScrollView {
-            VStack(spacing: 16) {
-                monthSwitcher
+            LazyVStack(spacing: 14) {
+                MonthNavigation(selection: $selectedMonth, latest: BudgetMonth.current.next())
                 totalBudgetCard(status: status)
-                categoryBudgetsCard(status: status)
+                categoryBudgetsCard(status: status, summary: summary)
             }
+            .frame(maxWidth: 1100)
             .padding(20)
+            .frame(maxWidth: .infinity)
         }
-        .background(AuroraBackground())
         .navigationTitle("预算")
         .sheet(item: $editing) { context in
             BudgetEditSheet(store: store, context: context)
-        }
-    }
-
-    private var monthSwitcher: some View {
-        let current = BudgetMonth.current
-        return HStack {
-            GlassEffectContainer(spacing: 10) {
-                HStack(spacing: 10) {
-                    Button {
-                        selectedMonth = selectedMonth.previous()
-                    } label: {
-                        Image(systemName: "chevron.left")
-                    }
-                    .buttonStyle(.glass)
-
-                    Text(FinanceFormat.monthLabel(selectedMonth))
-                        .font(.title3.weight(.semibold))
-                        .monospacedDigit()
-                        .frame(minWidth: 110)
-
-                    Button {
-                        selectedMonth = selectedMonth.next()
-                    } label: {
-                        Image(systemName: "chevron.right")
-                    }
-                    .buttonStyle(.glass)
-                    .disabled(selectedMonth >= current.next())
-                }
-            }
-
-            if selectedMonth != current {
-                Button("回到本月") {
-                    selectedMonth = current
-                }
-                .buttonStyle(.glass)
-            }
-
-            Spacer()
-
-            if selectedMonth == current {
-                Text("预算将按当月实际支出计算进度")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else if selectedMonth == current.next() {
-                Text("下月预算创建后，本月视图不受影响")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
         }
     }
 
@@ -78,7 +32,7 @@ struct BudgetView: View {
 
     private func totalBudgetCard(status: MonthlyBudgetStatus) -> some View {
         let usage = status.total
-        return GlassCard {
+        return FinancePanel {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Label("月总预算", systemImage: "target")
@@ -94,7 +48,7 @@ struct BudgetView: View {
                     } label: {
                         Label(usage.hasBudget ? "调整" : "设置", systemImage: "slider.horizontal.3")
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.bordered)
                 }
 
                 if usage.hasBudget {
@@ -134,13 +88,12 @@ struct BudgetView: View {
 
     // MARK: - 分类预算
 
-    private func categoryBudgetsCard(status: MonthlyBudgetStatus) -> some View {
+    private func categoryBudgetsCard(status: MonthlyBudgetStatus, summary: MonthlySummary) -> some View {
         let budgetable = store.categories.filter { $0.accepts(.expense) }
         let settled = budgetable.filter { status.categories[$0.id] != nil }
         let unset = budgetable.filter { status.categories[$0.id] == nil }
-        let summary = store.monthlySummary(in: selectedMonth.period())
 
-        return GlassCard {
+        return FinancePanel {
             VStack(alignment: .leading, spacing: 14) {
                 Label("分类预算", systemImage: "square.stack.3d.up.fill")
                     .font(.headline)
@@ -228,7 +181,7 @@ private struct CategoryBudgetRow: View {
                     .frame(width: 130)
             }
             Button("编辑") { onEdit() }
-                .buttonStyle(.glass)
+                .buttonStyle(.bordered)
                 .controlSize(.small)
         }
         .padding(.vertical, 2)
@@ -275,7 +228,7 @@ struct BudgetEditSheet: View {
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .glassEffect(.regular, in: .rect(cornerRadius: 18))
+            .background(Color(nsColor: .controlBackgroundColor), in: .rect(cornerRadius: 12))
 
             HStack {
                 Button("移除预算", role: .destructive) {
@@ -288,7 +241,7 @@ struct BudgetEditSheet: View {
                 Button("保存") {
                     apply(limit: parseAmountInMinorUnits(amountText, allowZero: true) ?? 0)
                 }
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
                 .disabled(parseAmountInMinorUnits(amountText, allowZero: true) == nil)
             }

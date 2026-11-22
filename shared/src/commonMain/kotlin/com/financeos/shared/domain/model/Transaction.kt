@@ -43,3 +43,14 @@ enum class TransactionType {
     INCOME,
     EXPENSE,
 }
+
+/** 趋势聚合所需的金额和时间，不加载流水的文本或分类字段。 */
+data class TransactionAmount(
+    val amount: Long,
+    val type: TransactionType,
+    val dateTime: Instant,
+) {
+    init {
+        require(amount > 0) { "Transaction amount must be greater than zero." }
+    }
+}

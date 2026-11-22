@@ -4,6 +4,7 @@ import com.financeos.shared.domain.calculation.BudgetCalculator
 import com.financeos.shared.domain.calculation.BudgetUsage
 import com.financeos.shared.domain.model.Budget
 import com.financeos.shared.domain.model.MonthPeriod
+import com.financeos.shared.domain.model.Transaction
 import com.financeos.shared.domain.repository.BudgetRepository
 
 /** 月总预算以及已设置分类预算的使用情况。 */
@@ -19,7 +20,7 @@ class GetBudgetStatusUseCase(
 ) {
     /** 使用同一批流水与预算快照计算，供响应式页面避免再次查询。 */
     fun calculate(
-        transactions: List<com.financeos.shared.domain.model.Transaction>,
+        transactions: List<Transaction>,
         budgets: List<Budget>,
     ): MonthlyBudgetStatus = calculate(getMonthlySummary.calculate(transactions), budgets)
 
@@ -34,16 +35,18 @@ class GetBudgetStatusUseCase(
         summary: MonthlySummary,
         budgets: List<Budget>,
     ): MonthlyBudgetStatus {
-        val totalBudget = budgets.firstOrNull { it.categoryId == null }
-        val categoryUsages = budgets
-            .mapNotNull { budget ->
-                val categoryId = budget.categoryId ?: return@mapNotNull null
-                categoryId to BudgetCalculator.calculate(
-                    budget = budget,
-                    amountUsed = summary.expensesByCategory[categoryId] ?: 0L,
-                )
+        val totalBudget = budgets.firstOrNull { it.categoryId == null && it.deletedAt == null }
+        val categoryUsages = buildMap {
+            for (budget in budgets) {
+                val categoryId = budget.categoryId ?: continue
+                if (budget.deletedAt == null) {
+                    put(
+                        categoryId,
+                        BudgetCalculator.calculate(budget, summary.expensesByCategory[categoryId] ?: 0L),
+                    )
+                }
             }
-            .toMap()
+        }
 
         return MonthlyBudgetStatus(
             total = BudgetCalculator.calculate(

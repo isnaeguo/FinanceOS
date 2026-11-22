@@ -5,8 +5,6 @@ import platform.Foundation.NSFileManager
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSApplicationSupportDirectory
 import platform.Foundation.NSUserDomainMask
-import platform.Foundation.NSString
-import platform.Foundation.stringByAppendingPathComponent
 
 /** App Group 与旧 store.json 保持一致，小组件据此与 App 读写同一份数据。 */
 private const val APP_GROUP_IDENTIFIER = "group.com.financeos.ios"
@@ -17,25 +15,32 @@ private const val DATABASE_FILE_NAME = "financeos.db"
 @OptIn(ExperimentalForeignApi::class)
 internal fun resolveAppleDatabaseDirectory(): String {
     val fileManager = NSFileManager.defaultManager
-    val groupPath: String? = fileManager
+    val groupPath = fileManager
         .containerURLForSecurityApplicationGroupIdentifier(APP_GROUP_IDENTIFIER)
         ?.path
-    val basePath: String = groupPath
-        ?: (NSSearchPathForDirectoriesInDomains(
-            NSApplicationSupportDirectory,
-            NSUserDomainMask,
-            true,
-        ).firstOrNull() as? String)
-        ?: error("无法解析 Apple 平台数据库目录。")
 
-    val directory = (basePath as NSString).stringByAppendingPathComponent(DATABASE_DIRECTORY)
-    fileManager.createDirectoryAtPath(
+    if (groupPath != null) {
+        fileManager.prepareDatabaseDirectory(groupPath)?.let { return it }
+    }
+    val supportPath = NSSearchPathForDirectoriesInDomains(
+        NSApplicationSupportDirectory,
+        NSUserDomainMask,
+        true,
+    ).firstOrNull() as? String
+    return supportPath?.let(fileManager::prepareDatabaseDirectory)
+        ?: error("无法创建 Apple 平台数据库目录。")
+}
+
+@OptIn(ExperimentalForeignApi::class)
+private fun NSFileManager.prepareDatabaseDirectory(basePath: String): String? {
+    val directory = basePath.trimEnd('/') + "/" + DATABASE_DIRECTORY
+    val created = createDirectoryAtPath(
         directory,
         withIntermediateDirectories = true,
         attributes = null,
         error = null,
     )
-    return directory
+    return directory.takeIf { created && isWritableFileAtPath(it) }
 }
 
 internal fun databaseFileName(): String = DATABASE_FILE_NAME
